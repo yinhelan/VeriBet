@@ -1,0 +1,64 @@
+{
+  "basic_info": {
+    "competition": "English Premier League",
+    "match": "Brighton vs Newcastle",
+    "kick_off": "2026-05-12 20:00 local",
+    "venue": "Brighton home",
+    "weather": "Clear"
+  },
+  "snapshots": {
+    "T1": {
+      "total_volume": 980000,
+      "home": {
+        "price": 4.3,
+        "volume": 155000,
+        "share": 15.8,
+        "pnl": 210000,
+        "heat": -18
+      },
+      "draw": {
+        "price": 3.6,
+        "volume": 162000,
+        "share": 16.5,
+        "pnl": 95000,
+        "heat": -6
+      },
+      "away": {
+        "price": 1.96,
+        "volume": 663000,
+        "share": 67.7,
+        "pnl": -388000,
+        "heat": 31
+      }
+    },
+    "T_last": {
+      "total_volume": 3120000,
+      "home": {
+        "price": 4.5,
+        "volume": 420000,
+        "share": 13.5,
+        "pnl": 510000,
+        "heat": -21
+      },
+      "draw": {
+        "price": 3.7,
+        "volume": 602000,
+        "share": 19.3,
+        "pnl": 170000,
+        "heat": 4
+      },
+      "away": {
+        "price": 1.93,
+        "volume": 2098000,
+        "share": 67.2,
+        "pnl": -742000,
+        "heat": 36
+      }
+    }
+  },
+  "notes": {
+    "stage": "pre_match",
+    "first_leg_score": null,
+    "opponent_quality": "upper-mid home team"
+  }
+}

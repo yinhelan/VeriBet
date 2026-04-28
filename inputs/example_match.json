@@ -1,0 +1,63 @@
+{
+  "basic_info": {
+    "competition": "UEFA Europa League",
+    "match": "Lazio vs Villarreal",
+    "kick_off": "2026-05-14 21:00 local",
+    "venue": "Lazio home",
+    "weather": "Clear"
+  },
+  "snapshots": {
+    "T1": {
+      "total_volume": 850000,
+      "home": {
+        "price": 2.42,
+        "volume": 244000,
+        "share": 28.7,
+        "pnl": 85000,
+        "heat": -4
+      },
+      "draw": {
+        "price": 3.08,
+        "volume": 312000,
+        "share": 36.7,
+        "pnl": -121000,
+        "heat": 18
+      },
+      "away": {
+        "price": 3.1,
+        "volume": 294000,
+        "share": 34.6,
+        "pnl": 43000,
+        "heat": -2
+      }
+    },
+    "T_last": {
+      "total_volume": 2960000,
+      "home": {
+        "price": 2.55,
+        "volume": 760000,
+        "share": 25.7,
+        "pnl": 240000,
+        "heat": -9
+      },
+      "draw": {
+        "price": 3.0,
+        "volume": 1080000,
+        "share": 36.5,
+        "pnl": -402000,
+        "heat": 26
+      },
+      "away": {
+        "price": 3.18,
+        "volume": 1120000,
+        "share": 37.8,
+        "pnl": 110000,
+        "heat": 3
+      }
+    }
+  },
+  "notes": {
+    "stage": "pre_match",
+    "european_leg": "first_leg"
+  }
+}
