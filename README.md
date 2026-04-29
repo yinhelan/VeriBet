@@ -761,6 +761,27 @@ cp .env.data_sources.example .env.data_sources
 - `merged`
 - `veribet_candidates`
 
+如果你想直接打一条链路：抓取 -> 导出输入 -> 批量跑 VeriBet live：
+
+```bash
+.venv/bin/python scripts/veribet_data_sources.py fetch-live-day \
+  --date 2026-04-29 \
+  --sport soccer_epl \
+  --api-sports-league 39 \
+  --api-sports-season 2025 \
+  --football-data-competition PL \
+  --export-dir inputs_auto_pl_2026-04-29 \
+  --live-output-dir live_outputs_auto_pl_2026-04-29
+```
+
+这个命令会返回两部分：
+- `aggregate`
+- `live`
+
+其中：
+- `aggregate` 是抓取和导出阶段结果
+- `live` 是批量跑 `VeriBet` live 的结果摘要
+
 快速例子：
 
 ```bash

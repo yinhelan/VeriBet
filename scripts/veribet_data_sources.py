@@ -6,6 +6,7 @@ import http.client
 import json
 import os
 import ssl
+import subprocess
 import sys
 from datetime import datetime
 import re
@@ -251,6 +252,44 @@ def export_candidates(candidates: list[dict[str, Any]], export_dir: str) -> list
     return written
 
 
+def run_live_batch_for_inputs(
+    inputs_dir: str,
+    output_dir: str,
+    retries: int = 2,
+    retry_delay: float = 2.0,
+) -> dict[str, Any]:
+    cmd = [
+        sys.executable,
+        str(ROOT_DIR / "scripts" / "veribet_live_batch.py"),
+        "--bundle",
+        str(ROOT_DIR / "prompts" / "veribet_prompt_bundle_v412_candidate.yaml"),
+        "--inputs",
+        str(ROOT_DIR / inputs_dir),
+        "--output-dir",
+        str(ROOT_DIR / output_dir),
+        "--retries",
+        str(retries),
+        "--retry-delay",
+        str(retry_delay),
+    ]
+    proc = subprocess.run(cmd, capture_output=True, text=True, cwd=str(ROOT_DIR))
+    stdout = proc.stdout.strip()
+    stderr = proc.stderr.strip()
+    payload: dict[str, Any] = {
+        "exit_code": proc.returncode,
+        "command": cmd,
+    }
+    if stdout:
+        try:
+            payload["result"] = json.loads(stdout)
+        except json.JSONDecodeError:
+            payload["stdout"] = stdout
+    if stderr:
+        payload["stderr"] = stderr
+    payload["ok"] = proc.returncode == 0
+    return payload
+
+
 def aggregate_day(
     date: str,
     sport: str = "soccer_epl",
@@ -391,6 +430,55 @@ def aggregate_day(
     }
 
 
+def fetch_and_run_live_day(
+    date: str,
+    sport: str = "soccer_epl",
+    competition_filter: str | None = None,
+    export_dir: str | None = None,
+    api_sports_league: str | None = None,
+    api_sports_season: str | None = None,
+    api_sports_team: str | None = None,
+    football_data_competition: str | None = None,
+    live_output_dir: str | None = None,
+    live_retries: int = 2,
+    live_retry_delay: float = 2.0,
+) -> dict[str, Any]:
+    actual_export_dir = export_dir or f"inputs_auto_{date}"
+    aggregate = aggregate_day(
+        date=date,
+        sport=sport,
+        competition_filter=competition_filter,
+        export_dir=actual_export_dir,
+        api_sports_league=api_sports_league,
+        api_sports_season=api_sports_season,
+        api_sports_team=api_sports_team,
+        football_data_competition=football_data_competition,
+    )
+    actual_live_output_dir = live_output_dir or f"live_outputs_auto_{date}"
+    if not aggregate.get("veribet_candidates_count"):
+        live = {
+            "ok": True,
+            "skipped": True,
+            "reason": "No exported VeriBet candidates for requested filters",
+            "exit_code": 0,
+        }
+    else:
+        live = run_live_batch_for_inputs(
+            inputs_dir=actual_export_dir,
+            output_dir=actual_live_output_dir,
+            retries=live_retries,
+            retry_delay=live_retry_delay,
+        )
+    return {
+        "ok": aggregate.get("ok") and live.get("ok"),
+        "date": date,
+        "inputs_dir": actual_export_dir,
+        "live_output_dir": actual_live_output_dir,
+        "aggregate": aggregate,
+        "live": live,
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Query configured football data sources for VeriBet.")
     parser.add_argument("--env-file", default=str(DEFAULT_ENV), help="Path to .env.data_sources")
@@ -423,6 +511,19 @@ def main() -> int:
     p_agg.add_argument("--api-sports-team", help="API-SPORTS team id filter")
     p_agg.add_argument("--football-data-competition", help="football-data competition code such as PL, ELC, CL")
 
+    p_fetch_live = sub.add_parser("fetch-live-day", help="Fetch one day, export inputs, and run VeriBet live batch")
+    p_fetch_live.add_argument("--date", required=True)
+    p_fetch_live.add_argument("--sport", default="soccer_epl")
+    p_fetch_live.add_argument("--competition", help="Case-insensitive substring filter on competition/league name")
+    p_fetch_live.add_argument("--export-dir", help="Repo-relative directory to write input JSON files")
+    p_fetch_live.add_argument("--api-sports-league", help="Exact API-SPORTS league id filter")
+    p_fetch_live.add_argument("--api-sports-season", help="API-SPORTS season, usually YYYY")
+    p_fetch_live.add_argument("--api-sports-team", help="API-SPORTS team id filter")
+    p_fetch_live.add_argument("--football-data-competition", help="football-data competition code such as PL, ELC, CL")
+    p_fetch_live.add_argument("--live-output-dir", help="Repo-relative directory to write VeriBet live result JSON files")
+    p_fetch_live.add_argument("--live-retries", type=int, default=2)
+    p_fetch_live.add_argument("--live-retry-delay", type=float, default=2.0)
+
     args = parser.parse_args()
     load_env_file(Path(args.env_file))
 
@@ -446,6 +547,20 @@ def main() -> int:
             args.api_sports_season,
             args.api_sports_team,
             args.football_data_competition,
+        )
+    elif args.command == "fetch-live-day":
+        result = fetch_and_run_live_day(
+            date=args.date,
+            sport=args.sport,
+            competition_filter=args.competition,
+            export_dir=args.export_dir,
+            api_sports_league=args.api_sports_league,
+            api_sports_season=args.api_sports_season,
+            api_sports_team=args.api_sports_team,
+            football_data_competition=args.football_data_competition,
+            live_output_dir=args.live_output_dir,
+            live_retries=args.live_retries,
+            live_retry_delay=args.live_retry_delay,
         )
     else:
         raise SystemExit(f"unsupported command: {args.command}")
