@@ -664,6 +664,59 @@ scripts/veribet_api_client.sh ingest-review-and-test inputs/example_match.json 2
 scripts/run_api_client_examples.sh
 ```
 
+## 数据源脚本
+
+仓库里也提供了一个零依赖的数据源脚本，先打通：
+- `football-data.org`
+- `API-SPORTS`
+- `The Odds API`
+
+先准备本地密钥文件：
+
+```bash
+cp .env.data_sources.example .env.data_sources
+```
+
+检查哪些 key 已配置：
+
+```bash
+.venv/bin/python scripts/veribet_data_sources.py check
+```
+
+拉取 `football-data.org` 赛事列表：
+
+```bash
+.venv/bin/python scripts/veribet_data_sources.py football-data-competitions
+```
+
+拉取 `football-data.org` 比赛：
+
+```bash
+.venv/bin/python scripts/veribet_data_sources.py football-data-matches \
+  --date-from 2026-04-29 \
+  --date-to 2026-04-29
+```
+
+拉取 `API-SPORTS` 赛程：
+
+```bash
+.venv/bin/python scripts/veribet_data_sources.py api-sports-fixtures \
+  --date 2026-04-29
+```
+
+拉取 `The Odds API` 比分：
+
+```bash
+.venv/bin/python scripts/veribet_data_sources.py odds-api-scores \
+  --sport soccer_epl
+```
+
+快速例子：
+
+```bash
+scripts/run_data_source_examples.sh
+```
+
 ## 本地面板
 
 启动 API 后，浏览器直接打开：
