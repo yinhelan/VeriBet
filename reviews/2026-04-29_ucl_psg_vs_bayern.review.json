@@ -1,0 +1,50 @@
+{
+  "match_id": "ucl_psg_vs_bayern_2026-04-29",
+  "match_input_file": "inputs/ucl_psg_vs_bayern_2026-04-29.json",
+  "result_file": "live_outputs_2026-04-29/ucl_psg_vs_bayern_2026-04-29.result.json",
+  "actual_result": {
+    "ft_score": "5-4",
+    "ht_score": "3-2"
+  },
+  "result_label": {
+    "winner": "home",
+    "hit_main_direction": false,
+    "hit_secondary_direction": true,
+    "hit_tail_direction": false
+  },
+  "veribet_summary": {
+    "should_analyze": "true",
+    "data_grade": "B",
+    "risk_level": "medium",
+    "confidence_cap": "medium",
+    "structures": [],
+    "main_direction": [
+      "平局"
+    ],
+    "secondary_direction": [
+      "主胜"
+    ],
+    "tail_direction": [
+      "客胜"
+    ],
+    "flags": [
+      "单快照样本",
+      "终盘持续性验证缺失",
+      "欧战首回合场景",
+      "平局赔付压力存在",
+      "客胜热度偏冷"
+    ],
+    "raw_text": "已观察数据方面：样本为欧冠半决赛首回合，提供了 T_last 单快照，总量 2987768，体量充足；主胜 40.8% 对应 2.6，平局 25.88% 对应 4.1，客胜 33.32% 对应 2.72。盈亏端上，主胜 -181697、平局 -182336、客胜 +279880，说明当前主要赔付压力集中在主胜与平局，其中平局略高于主胜；冷热上主胜 +6、平局 +5、客胜 -9，客胜热度偏冷。结构上，这不是典型欧战强平热，因为平局占比未到 35% 以上；也不是轻偏客、联赛客热、防平客热、伪强客热或主平双热开放盘。更接近欧战首回合中的开放承接局面：主胜有份额优势，但未形成压制；平局赔付压力真实存在，且并未冷却；客胜虽然名义价格不高，但资金与热度都未显示强确认。风险上，由于只有终段单快照，缺少 T1 到 T_last 的持续性验证，无法确认平局或主胜压力是否为持续形成，因此不宜给高置信表述；不过样本不属于缺终盘或低体量，仍可做正常研究。方向排序上，研究性判断以前两端为主：平局与主胜更应被前置观察，其后才是客胜。若从欧战首回合语境看，赢球方向更偏主队一侧，但单论市场赔付结构，平局的防守价值并未消退，因此排序给出平局优先、主胜次之、客胜尾部。"
+  },
+  "postmortem_tags": [
+    "主胜兑现",
+    "高比分开放战",
+    "单快照偏保守"
+  ],
+  "human_judgement": "主胜方向最终兑现，但比赛形态属于高波动开放战，不是稳态控制型主胜。",
+  "suggested_rule_delta": "欧战强强对话若主胜与平局赔付同时承压、且仅有单快照时，应补充开放战风险提示，避免把方向正确误写成低波动兑现。",
+  "notes": {
+    "analyst": "yinhelan",
+    "source": "manual_review"
+  }
+}

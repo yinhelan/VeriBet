@@ -1,0 +1,19 @@
+{
+  "rule_id": "league_home_heat_draw_guard_v1",
+  "target_section": "rulebook",
+  "change_type": "append_rule",
+  "content": "若联赛场景下主胜赔率处于 2.20~2.35 区间，主端为唯一明显负赔付端，且仅有单快照、缺少 T1→T_last 演变验证，则不得把平局降到尾部；平局至少保留为 secondary_direction，并在 flags 中显式提示单快照下主热未封口风险。",
+  "rationale": {
+    "match_id": "efl_southampton_vs_ipswich_2026-04-29",
+    "postmortem_tags": [
+      "单快照偏保守",
+      "主热未封口",
+      "平局低估"
+    ],
+    "human_judgement": "主胜承接明显，但联赛单边主热未形成绝对封口，平局价值被低估后兑现。",
+    "suggested_rule_delta": "联赛主热2.20~2.35且主端为唯一强负赔付端时，若缺少双快照验证，不得把平局降到尾部。",
+    "structures": [],
+    "match_input_file": "inputs/efl_southampton_vs_ipswich_2026-04-29.json"
+  },
+  "status": "candidate"
+}

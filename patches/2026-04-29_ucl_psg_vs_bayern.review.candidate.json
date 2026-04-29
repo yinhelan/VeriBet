@@ -1,0 +1,19 @@
+{
+  "rule_id": "europe_open_game_risk_hint_v1",
+  "target_section": "rulebook",
+  "change_type": "append_rule",
+  "content": "若欧战强强对话中主胜与平局赔付同时承压，且仅有单快照，则即便方向排序偏向某一端，也必须在 flags 或 raw_text 中补充开放战/高波动提示，避免把方向正确误写成低波动兑现。",
+  "rationale": {
+    "match_id": "ucl_psg_vs_bayern_2026-04-29",
+    "postmortem_tags": [
+      "单快照偏保守",
+      "主胜兑现",
+      "高比分开放战"
+    ],
+    "human_judgement": "主胜方向最终兑现，但比赛形态属于高波动开放战，不是稳态控制型主胜。",
+    "suggested_rule_delta": "欧战强强对话若主胜与平局赔付同时承压、且仅有单快照时，应补充开放战风险提示，避免把方向正确误写成低波动兑现。",
+    "structures": [],
+    "match_input_file": "inputs/ucl_psg_vs_bayern_2026-04-29.json"
+  },
+  "status": "candidate"
+}

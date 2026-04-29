@@ -1,0 +1,41 @@
+{
+  "basic_info": {
+    "competition": "EFL Championship",
+    "match": "Southampton vs Ipswich Town",
+    "kick_off": "2026-04-29 02:45",
+    "venue": "St Mary's Stadium",
+    "weather": "Partly cloudy 14C wind 7.0m/s"
+  },
+  "snapshots": {
+    "T_last": {
+      "total_volume": 346386,
+      "home": {
+        "price": 2.30,
+        "volume": 177867,
+        "share": 51.35,
+        "pnl": -62708,
+        "heat": 21
+      },
+      "draw": {
+        "price": 3.70,
+        "volume": 78083,
+        "share": 22.54,
+        "pnl": 57479,
+        "heat": -17
+      },
+      "away": {
+        "price": 3.40,
+        "volume": 90436,
+        "share": 26.11,
+        "pnl": 38904,
+        "heat": -14
+      }
+    }
+  },
+  "notes": {
+    "stage": "pre_match",
+    "league_round": "英冠40",
+    "home_rank": "英冠5",
+    "away_rank": "英冠2"
+  }
+}

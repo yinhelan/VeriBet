@@ -1,0 +1,49 @@
+{
+  "match_id": "efl_southampton_vs_ipswich_2026-04-29",
+  "match_input_file": "inputs/efl_southampton_vs_ipswich_2026-04-29.json",
+  "result_file": "live_outputs_2026-04-29/efl_southampton_vs_ipswich_2026-04-29.result.json",
+  "actual_result": {
+    "ft_score": "2-2",
+    "ht_score": "0-0"
+  },
+  "result_label": {
+    "winner": "draw",
+    "hit_main_direction": false,
+    "hit_secondary_direction": true,
+    "hit_tail_direction": false
+  },
+  "veribet_summary": {
+    "should_analyze": "true",
+    "data_grade": "B",
+    "risk_level": "medium",
+    "confidence_cap": "low_medium",
+    "structures": [],
+    "main_direction": [
+      "主胜"
+    ],
+    "secondary_direction": [
+      "平局"
+    ],
+    "tail_direction": [
+      "客胜"
+    ],
+    "flags": [
+      "单快照样本",
+      "缺少T1到T_last变化验证",
+      "主端为主要负赔付端",
+      "联赛波动需保留尾部"
+    ],
+    "raw_text": "数据审计：样本提供了联赛信息、对阵、开球时间、场地、天气、T_last终盘快照、三端价格/占比/盈亏/冷热以及总量，基础可分析，但仅有单快照，缺少T1到T_last的过程变化，无法验证热度演变与终盘持续性。结构识别：当前更接近普通主向市场而非规则库中的高优先级特殊结构。主胜占比51.35%、价格2.30、主端为唯一明显负赔付端且冷热为正，说明主队是当前主要承接方向；平局22.54%、客胜26.11%均未形成强对冲热度，市场未出现主平双热、轻偏客、联赛客热或赔率背离等典型标签。风险等级：总量34.64万，不属低体量强制降级区，但英冠联赛波动本就偏大，且单快照下无法验证后段资金流是否反转，因此风险定为medium，置信上限给到low_medium。方向判断：研究性排序以主胜为先，平局作为次方向，客胜保留尾部。需要注意的是，排名上客队更高，但终盘资金与赔付并未支持客胜成为主结构，说明市场更偏向主场承接，不过由于缺少前序快照，这一结论只适合作为研究性观察，不宜提升为高置信表述。"
+  },
+  "postmortem_tags": [
+    "主热未封口",
+    "平局低估",
+    "单快照偏保守"
+  ],
+  "human_judgement": "主胜承接明显，但联赛单边主热未形成绝对封口，平局价值被低估后兑现。",
+  "suggested_rule_delta": "联赛主热2.20~2.35且主端为唯一强负赔付端时，若缺少双快照验证，不得把平局降到尾部。",
+  "notes": {
+    "analyst": "yinhelan",
+    "source": "manual_review"
+  }
+}

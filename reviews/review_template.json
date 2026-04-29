@@ -1,0 +1,21 @@
+{
+  "match_id": "2026-04-29_example_match",
+  "actual_result": {
+    "ft_score": "0-0",
+    "ht_score": "0-0"
+  },
+  "result_label": {
+    "winner": "draw",
+    "hit_main_direction": false,
+    "hit_secondary_direction": false
+  },
+  "postmortem_tags": [
+    "结构示例标签"
+  ],
+  "human_judgement": "这里写人工复盘结论。",
+  "suggested_rule_delta": "这里写建议补充的规则或修正方向。",
+  "notes": {
+    "analyst": "yinhelan",
+    "source": "manual_review"
+  }
+}

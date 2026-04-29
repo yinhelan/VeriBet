@@ -1,0 +1,40 @@
+{
+  "basic_info": {
+    "competition": "UEFA Champions League",
+    "match": "Paris Saint-Germain vs Bayern Munich",
+    "kick_off": "2026-04-29 03:00",
+    "venue": "Parc des Princes",
+    "weather": "Clear 19C wind 4.3m/s"
+  },
+  "snapshots": {
+    "T_last": {
+      "total_volume": 2987768,
+      "home": {
+        "price": 2.60,
+        "volume": 1219025,
+        "share": 40.8,
+        "pnl": -181697,
+        "heat": 6
+      },
+      "draw": {
+        "price": 4.10,
+        "volume": 773196,
+        "share": 25.88,
+        "pnl": -182336,
+        "heat": 5
+      },
+      "away": {
+        "price": 2.72,
+        "volume": 995547,
+        "share": 33.32,
+        "pnl": 279880,
+        "heat": -9
+      }
+    }
+  },
+  "notes": {
+    "stage": "pre_match",
+    "competition_stage": "semi_final_first_leg",
+    "european_leg": "first_leg"
+  }
+}
