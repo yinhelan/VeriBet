@@ -193,6 +193,9 @@
       padding: 12px;
       background: #fff;
     }
+    .summary-item .toolbar {
+      margin-top: 10px;
+    }
     @media (max-width: 900px) {
       .hero, .grid { grid-template-columns: 1fr; }
     }
@@ -465,9 +468,21 @@
           <strong>${item.preset || '-'}</strong><br>
           <small>sport: ${item.sport || '-'}</small><br>
           <small>active matches: ${item.merged_count ?? '-'} · exported: ${item.exported_files ?? '-'}</small>
+          <div class="toolbar">
+            <button class="secondary action-fill-preset" data-preset="${item.preset || ''}">填入表单</button>
+            <button class="action-run-preset-live" data-preset="${item.preset || ''}">跑 live</button>
+          </div>
         `;
         list.appendChild(node);
       }
+      list.querySelectorAll('.action-fill-preset').forEach(btn => {
+        btn.addEventListener('click', () => {
+          el('scanPresets').value = btn.dataset.preset || '';
+        });
+      });
+      list.querySelectorAll('.action-run-preset-live').forEach(btn => {
+        btn.addEventListener('click', () => submitSinglePresetLiveJob(btn.dataset.preset || '').catch(err => alert(err.message)));
+      });
     }
 
     async function refreshActiveScanPanel(jobs) {
@@ -584,6 +599,27 @@
 
     async function submitDefaultScanLiveJob() {
       return submitScanJobWithPresets(true, true);
+    }
+
+    async function submitSinglePresetLiveJob(preset) {
+      const date = el('scanDate').value.trim();
+      const apiSportsSeason = el('scanSeason').value.trim();
+      const payload = {
+        date,
+        presets: [preset],
+        only_active: false,
+        run_live: true,
+      };
+      if (apiSportsSeason) payload.api_sports_season = apiSportsSeason;
+      const data = await fetchJson('/api/jobs/scan-top-day', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      el('scanHint').textContent = `已提交单预设 live 任务: ${data.job_id} (${preset})`;
+      state.selectedJobId = data.job_id;
+      await loadJobs();
+      await selectJob(data.job_id, true);
     }
 
     async function submitScanJobWithPresets(useAllPresets, forceRunLive = false) {
