@@ -918,6 +918,7 @@ http://127.0.0.1:8012/
 - 提交异步 `ingest-review-and-test`
 - 提交异步 `scan-top-day`
 - 一键扫 10 个顶级赛事预设
+- 一键扫 10 个顶级赛事预设并跑 `live`
 - 过滤任务
 - 清理任务
 - 切换 compact / verbose 列表模式

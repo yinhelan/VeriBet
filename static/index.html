@@ -277,6 +277,7 @@
           <div class="toolbar" style="margin-top:4px;">
             <button id="submitScanBtn">提交扫描任务</button>
             <button class="secondary" id="submitDefaultScanBtn">一键扫 10 个预设</button>
+            <button class="secondary" id="submitDefaultScanLiveBtn">一键扫 10 个预设并跑 live</button>
           </div>
           <p class="hint" id="scanHint">会进入 jobs 队列，完成后可在详情里看 `active_presets` 和各预设摘要。</p>
         </div>
@@ -513,12 +514,16 @@
       return submitScanJobWithPresets(true);
     }
 
-    async function submitScanJobWithPresets(useAllPresets) {
+    async function submitDefaultScanLiveJob() {
+      return submitScanJobWithPresets(true, true);
+    }
+
+    async function submitScanJobWithPresets(useAllPresets, forceRunLive = false) {
       const date = el('scanDate').value.trim();
       const apiSportsSeason = el('scanSeason').value.trim();
       const presetsRaw = el('scanPresets').value.trim();
       const onlyActive = el('scanOnlyActive').value === 'true';
-      const runLive = el('scanRunLive').value === 'true';
+      const runLive = forceRunLive || el('scanRunLive').value === 'true';
       const payload = { date, only_active: onlyActive, run_live: runLive };
       if (apiSportsSeason) payload.api_sports_season = apiSportsSeason;
       if (!useAllPresets && presetsRaw) {
@@ -529,7 +534,9 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      el('scanHint').textContent = `已提交扫描任务: ${data.job_id}${useAllPresets ? '（10 个预设）' : ''}`;
+      const presetLabel = useAllPresets ? '（10 个预设）' : '';
+      const liveLabel = runLive ? ' + live' : '';
+      el('scanHint').textContent = `已提交扫描任务: ${data.job_id}${presetLabel}${liveLabel}`;
       state.selectedJobId = data.job_id;
       await loadJobs();
       await selectJob(data.job_id, true);
@@ -565,6 +572,7 @@
     el('submitJobBtn').addEventListener('click', submitJob);
     el('submitScanBtn').addEventListener('click', submitScanJob);
     el('submitDefaultScanBtn').addEventListener('click', submitDefaultScanJob);
+    el('submitDefaultScanLiveBtn').addEventListener('click', submitDefaultScanLiveJob);
     el('cleanupBtn').addEventListener('click', cleanupJobs);
     el('compactBtn').addEventListener('click', async () => { state.verbose = false; await loadJobs(); });
     el('verboseBtn').addEventListener('click', async () => { state.verbose = true; await loadJobs(); });
