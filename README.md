@@ -234,6 +234,29 @@ curl -X POST http://127.0.0.1:8012/api/live/batch \
   }'
 ```
 
+### 数据源预设
+
+查看内置顶级赛事预设：
+
+```bash
+curl -X POST http://127.0.0.1:8012/api/data-sources/top-competitions \
+  -H 'Content-Type: application/json' \
+  -d '{}'
+```
+
+批量扫描当天预设：
+
+```bash
+curl -X POST http://127.0.0.1:8012/api/data-sources/scan-top-day \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "date": "2026-04-29",
+    "api_sports_season": "2025",
+    "presets": ["epl", "championship", "ucl"],
+    "only_active": true
+  }'
+```
+
 ### 生成赛后复盘
 
 ```bash

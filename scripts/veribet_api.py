@@ -448,6 +448,10 @@ def run_json_script(script_name: str, args: list[str]) -> dict[str, Any]:
         raise RuntimeError(f"{script_name} did not return valid JSON") from exc
 
 
+def run_data_sources_script(args: list[str]) -> dict[str, Any]:
+    return run_json_script("veribet_data_sources.py", args)
+
+
 def execute_ingest_review_and_test(
     body: dict[str, Any],
     *,
@@ -717,6 +721,12 @@ class VeriBetAPIHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         try:
             body = self._read_json_body()
+            if parsed.path == "/api/data-sources/top-competitions":
+                self.handle_data_sources_top_competitions()
+                return
+            if parsed.path == "/api/data-sources/scan-top-day":
+                self.handle_data_sources_scan_top_day(body)
+                return
             if parsed.path == "/api/live/analyze":
                 self.handle_live_analyze(body)
                 return
@@ -811,6 +821,35 @@ class VeriBetAPIHandler(BaseHTTPRequestHandler):
             retry_delay=retry_delay,
             output_dir=output_dir,
         )
+        self._send_json(HTTPStatus.OK, result)
+
+    def handle_data_sources_top_competitions(self) -> None:
+        result = run_data_sources_script(["top-competitions"])
+        self._send_json(HTTPStatus.OK, result)
+
+    def handle_data_sources_scan_top_day(self, body: dict[str, Any]) -> None:
+        date = str(body.get("date") or "").strip()
+        if not date:
+            raise ValueError("date is required")
+
+        args = ["scan-top-day", "--date", date]
+        if body.get("api_sports_season"):
+            args.extend(["--api-sports-season", str(body["api_sports_season"])])
+        if body.get("presets"):
+            presets = body["presets"]
+            if not isinstance(presets, list) or not all(isinstance(item, str) for item in presets):
+                raise ValueError("presets must be an array of strings")
+            args.extend(["--presets", ",".join(presets)])
+        if body.get("run_live"):
+            args.append("--run-live")
+        if body.get("only_active"):
+            args.append("--only-active")
+        if body.get("export_base_dir"):
+            args.extend(["--export-base-dir", str(body["export_base_dir"])])
+        if body.get("live_output_base_dir"):
+            args.extend(["--live-output-base-dir", str(body["live_output_base_dir"])])
+
+        result = run_data_sources_script(args)
         self._send_json(HTTPStatus.OK, result)
 
     def handle_postmortem(self, body: dict[str, Any]) -> None:
