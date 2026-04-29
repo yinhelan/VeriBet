@@ -183,6 +183,16 @@
       font-size: 13px;
       line-height: 1.5;
     }
+    .summary-grid {
+      display: grid;
+      gap: 10px;
+    }
+    .summary-item {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 12px;
+      background: #fff;
+    }
     @media (max-width: 900px) {
       .hero, .grid { grid-template-columns: 1fr; }
     }
@@ -323,6 +333,15 @@
       <div class="stack">
         <div class="card">
           <div class="detail-head">
+            <h2>活跃预设</h2>
+            <small id="activeScanLabel">暂无扫描结果</small>
+          </div>
+          <div class="summary-grid" id="activeScanList">
+            <div class="summary-item"><small class="muted">先提交一次 `scan-top-day` 任务。</small></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="detail-head">
             <h2>任务列表</h2>
             <small id="listModeLabel">mode: compact</small>
           </div>
@@ -343,6 +362,7 @@
     const state = {
       verbose: false,
       selectedJobId: null,
+      activeScanJobId: null,
       autoPoll: true,
       pollTimer: null,
       loading: false,
@@ -424,6 +444,52 @@
       });
     }
 
+    function renderActiveScan(jobId, summaries) {
+      const list = el('activeScanList');
+      const label = el('activeScanLabel');
+      if (!jobId) {
+        label.textContent = '暂无扫描结果';
+        list.innerHTML = '<div class="summary-item"><small class="muted">先提交一次 `scan-top-day` 任务。</small></div>';
+        return;
+      }
+      label.textContent = jobId;
+      if (!summaries.length) {
+        list.innerHTML = '<div class="summary-item"><small class="muted">这次扫描没有发现当天有比赛的预设。</small></div>';
+        return;
+      }
+      list.innerHTML = '';
+      for (const item of summaries) {
+        const node = document.createElement('div');
+        node.className = 'summary-item';
+        node.innerHTML = `
+          <strong>${item.preset || '-'}</strong><br>
+          <small>sport: ${item.sport || '-'}</small><br>
+          <small>active matches: ${item.merged_count ?? '-'} · exported: ${item.exported_files ?? '-'}</small>
+        `;
+        list.appendChild(node);
+      }
+    }
+
+    async function refreshActiveScanPanel(jobs) {
+      const scanJobs = jobs.filter(job => job.job_type === 'scan_top_day');
+      if (!scanJobs.length) {
+        state.activeScanJobId = null;
+        renderActiveScan(null, []);
+        return;
+      }
+      const latest = scanJobs[0];
+      if (latest.status !== 'completed' || !latest.job_id) {
+        renderActiveScan(latest.job_id, []);
+        return;
+      }
+      if (state.activeScanJobId === latest.job_id) return;
+      const detail = await fetchJson(`/api/jobs/${latest.job_id}`);
+      const result = detail.result || {};
+      const summaries = Array.isArray(result.active_summaries) ? result.active_summaries : [];
+      state.activeScanJobId = latest.job_id;
+      renderActiveScan(latest.job_id, summaries);
+    }
+
     async function loadJobs() {
       if (state.loading) return;
       state.loading = true;
@@ -431,7 +497,9 @@
       try {
         const data = await fetchJson(`/api/jobs${query ? `?${query}` : ''}`);
         el('listModeLabel').textContent = `mode: ${state.verbose ? 'verbose' : 'compact'}`;
-        renderJobs(data.jobs || []);
+        const jobs = data.jobs || [];
+        renderJobs(jobs);
+        await refreshActiveScanPanel(jobs);
         if (state.selectedJobId) {
           await selectJob(state.selectedJobId, true);
         }
