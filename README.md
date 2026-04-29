@@ -729,6 +729,18 @@ cp .env.data_sources.example .env.data_sources
   --export-dir inputs_auto_2026-04-29
 ```
 
+如果你已经知道 API-SPORTS 的联赛 id，优先用精确过滤：
+
+```bash
+.venv/bin/python scripts/veribet_data_sources.py aggregate-day \
+  --date 2026-04-29 \
+  --sport soccer_epl \
+  --api-sports-league 39 \
+  --api-sports-season 2025 \
+  --football-data-competition PL \
+  --export-dir inputs_auto_pl_2026-04-29
+```
+
 这个命令会返回：
 - `source_counts`
 - `merged_count`
@@ -741,6 +753,8 @@ cp .env.data_sources.example .env.data_sources
 - 现在只保留目标日期的比赛
 - `veribet_candidates` 是可继续补 `snapshots` 的 VeriBet 输入骨架
 - `--competition` 会按赛事名做不区分大小写的包含过滤
+- `--api-sports-league/--api-sports-season/--api-sports-team` 会直接透传到 API-SPORTS
+- `--football-data-competition` 会直接透传到 football-data
 - `--export-dir` 会把 `veribet_candidates` 直接写成仓库内的 `*.json`
 
 如果你只是想先拿“当天比赛清单 + 基础骨架”，优先看：

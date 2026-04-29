@@ -2,13 +2,16 @@
 from __future__ import annotations
 
 import argparse
+import http.client
 import json
 import os
 import ssl
 import sys
 from datetime import datetime
 import re
+import time
 import urllib.parse
+import urllib.error
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -20,6 +23,8 @@ except Exception:
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_ENV = ROOT_DIR / ".env.data_sources"
+DEFAULT_RETRIES = 2
+DEFAULT_RETRY_DELAY = 1.0
 
 
 def load_env_file(path: Path) -> None:
@@ -36,13 +41,31 @@ def load_env_file(path: Path) -> None:
             os.environ[key] = value
 
 
-def http_get_json(url: str, headers: dict[str, str], timeout: int = 30) -> dict[str, Any]:
-    req = urllib.request.Request(url, headers=headers, method="GET")
+def open_url(
+    req: urllib.request.Request,
+    timeout: int = 30,
+    retries: int = DEFAULT_RETRIES,
+    retry_delay: float = DEFAULT_RETRY_DELAY,
+) -> tuple[str, Any]:
     context = None
     if certifi is not None:
       context = ssl.create_default_context(cafile=certifi.where())
-    with urllib.request.urlopen(req, timeout=timeout, context=context) as resp:
-        body = resp.read().decode("utf-8", errors="replace")
+    attempt = 0
+    while True:
+        try:
+            with urllib.request.urlopen(req, timeout=timeout, context=context) as resp:
+                body = resp.read().decode("utf-8", errors="replace")
+                return body, resp.headers
+        except (urllib.error.URLError, TimeoutError, http.client.RemoteDisconnected, ConnectionResetError) as exc:
+            attempt += 1
+            if attempt > retries:
+                raise exc
+            time.sleep(retry_delay)
+
+
+def http_get_json(url: str, headers: dict[str, str], timeout: int = 30) -> dict[str, Any]:
+    req = urllib.request.Request(url, headers=headers, method="GET")
+    body, _headers = open_url(req, timeout=timeout)
     return json.loads(body)
 
 
@@ -113,17 +136,13 @@ def odds_api_scores(sport: str, days_from: int | None) -> dict[str, Any]:
     url = f"https://api.the-odds-api.com/v4/sports/{urllib.parse.quote(sport)}/scores"
     url += "?" + urllib.parse.urlencode(query)
     req = urllib.request.Request(url, headers={"Accept": "application/json"}, method="GET")
-    context = None
-    if certifi is not None:
-      context = ssl.create_default_context(cafile=certifi.where())
-    with urllib.request.urlopen(req, timeout=30, context=context) as resp:
-        body = resp.read().decode("utf-8", errors="replace")
-        payload = json.loads(body)
-        return {
-            "data": payload,
-            "x-requests-remaining": resp.headers.get("x-requests-remaining"),
-            "x-requests-used": resp.headers.get("x-requests-used"),
-        }
+    body, headers = open_url(req, timeout=30)
+    payload = json.loads(body)
+    return {
+        "data": payload,
+        "x-requests-remaining": headers.get("x-requests-remaining"),
+        "x-requests-used": headers.get("x-requests-used"),
+    }
 
 
 def check_sources() -> dict[str, Any]:
@@ -237,9 +256,13 @@ def aggregate_day(
     sport: str = "soccer_epl",
     competition_filter: str | None = None,
     export_dir: str | None = None,
+    api_sports_league: str | None = None,
+    api_sports_season: str | None = None,
+    api_sports_team: str | None = None,
+    football_data_competition: str | None = None,
 ) -> dict[str, Any]:
-    fd = football_data_matches(date, date, None)
-    api = api_sports_fixtures(date, None, None, None)
+    fd = football_data_matches(date, date, football_data_competition)
+    api = api_sports_fixtures(date, api_sports_league, api_sports_season, api_sports_team)
     odds = odds_api_scores(sport, None)
 
     aggregate: dict[str, dict[str, Any]] = {}
@@ -334,6 +357,10 @@ def aggregate_day(
         "sport": sport,
         "competition_filter": competition_filter,
         "export_dir": export_dir,
+        "api_sports_league": api_sports_league,
+        "api_sports_season": api_sports_season,
+        "api_sports_team": api_sports_team,
+        "football_data_competition": football_data_competition,
         "notes": [
             "aggregate-day 现在只保留目标日期的比赛。",
             "veribet_candidates 是可直接继续补充快照字段的 VeriBet 输入骨架。",
@@ -391,6 +418,10 @@ def main() -> int:
     p_agg.add_argument("--sport", default="soccer_epl")
     p_agg.add_argument("--competition", help="Case-insensitive substring filter on competition/league name")
     p_agg.add_argument("--export-dir", help="Write veribet_candidates into this repo-relative directory")
+    p_agg.add_argument("--api-sports-league", help="Exact API-SPORTS league id filter")
+    p_agg.add_argument("--api-sports-season", help="API-SPORTS season, usually YYYY")
+    p_agg.add_argument("--api-sports-team", help="API-SPORTS team id filter")
+    p_agg.add_argument("--football-data-competition", help="football-data competition code such as PL, ELC, CL")
 
     args = parser.parse_args()
     load_env_file(Path(args.env_file))
@@ -406,7 +437,16 @@ def main() -> int:
     elif args.command == "odds-api-scores":
         result = odds_api_scores(args.sport, args.days_from)
     elif args.command == "aggregate-day":
-        result = aggregate_day(args.date, args.sport, args.competition, args.export_dir)
+        result = aggregate_day(
+            args.date,
+            args.sport,
+            args.competition,
+            args.export_dir,
+            args.api_sports_league,
+            args.api_sports_season,
+            args.api_sports_team,
+            args.football_data_competition,
+        )
     else:
         raise SystemExit(f"unsupported command: {args.command}")
 
