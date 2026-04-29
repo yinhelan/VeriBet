@@ -69,6 +69,27 @@ OPENAI_BASE_URL=https://sub.yinhelao.com:8444/v1
 OPENAI_MODEL=codex/gpt-5.4
 ```
 
+如果后面要接真实比赛数据源，另外准备一份本地模板：
+
+```bash
+cp .env.data_sources.example .env.data_sources
+```
+
+示例字段：
+
+```env
+FOOTBALL_DATA_TOKEN=
+APISPORTS_KEY=
+ODDS_API_KEY=
+SCRAPINGBEE_API_KEY=
+ODDSP_API_KEY=
+ODDSP_ACCOUNT_ID=
+```
+
+注意：
+- `.env.data_sources` 只放本机，不要提交
+- 不要把真实 key 再写进聊天、终端截图或 Git 提交
+
 ## 回归测试
 
 ### 跑目标 case
