@@ -6,7 +6,10 @@ import json
 import os
 import subprocess
 import sys
+import threading
 import time
+import traceback
+import uuid
 from datetime import datetime
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -34,6 +37,9 @@ from veribet_rule_proposer import make_candidate
 ROOT_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_BUNDLE = ROOT_DIR / "prompts" / "veribet_prompt_bundle_v412_candidate.yaml"
 DEFAULT_ENV = ROOT_DIR / ".env"
+JOBS_DIR = ROOT_DIR / "jobs"
+JOB_STORE_LOCK = threading.Lock()
+JOB_STORE: dict[str, dict[str, Any]] = {}
 
 
 def load_env_file(path: Path) -> None:
@@ -70,6 +76,35 @@ def dump_json(path: Path, data: dict[str, Any]) -> None:
 
 def load_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def utc_now() -> str:
+    return datetime.utcnow().isoformat(timespec="seconds") + "Z"
+
+
+def get_job_path(job_id: str) -> Path:
+    return JOBS_DIR / f"{job_id}.json"
+
+
+def write_job_state(job_id: str, payload: dict[str, Any]) -> None:
+    JOBS_DIR.mkdir(parents=True, exist_ok=True)
+    with JOB_STORE_LOCK:
+        JOB_STORE[job_id] = payload
+    dump_json(get_job_path(job_id), payload)
+
+
+def read_job_state(job_id: str) -> dict[str, Any] | None:
+    with JOB_STORE_LOCK:
+        cached = JOB_STORE.get(job_id)
+    if cached is not None:
+        return cached
+    path = get_job_path(job_id)
+    if path.exists():
+        state = load_json(path)
+        with JOB_STORE_LOCK:
+            JOB_STORE[job_id] = state
+        return state
+    return None
 
 
 def analyze_match(
@@ -267,6 +302,157 @@ def run_json_script(script_name: str, args: list[str]) -> dict[str, Any]:
         raise RuntimeError(f"{script_name} did not return valid JSON") from exc
 
 
+def execute_ingest_review_and_test(body: dict[str, Any]) -> dict[str, Any]:
+    if isinstance(body.get("input"), dict):
+        match_input = body["input"]
+        input_file = body.get("match_input_file", "")
+    else:
+        input_path = body.get("input_path")
+        if not input_path:
+            raise ValueError("input or input_path is required")
+        path = resolve_repo_path(input_path)
+        match_input = load_json(path)
+        input_file = str(path)
+
+    bundle_path = resolve_repo_path(body.get("bundle_path", str(DEFAULT_BUNDLE.relative_to(ROOT_DIR))))
+    timeout = int(body.get("timeout", 180))
+    retries = int(body.get("retries", 2))
+    retry_delay = float(body.get("retry_delay", 1.5))
+
+    if isinstance(body.get("result"), dict):
+        live_result = body["result"]
+        result_file = body.get("result_file", "")
+    elif body.get("result_path"):
+        path = resolve_repo_path(body["result_path"])
+        live_result = load_json(path)
+        result_file = str(path)
+    else:
+        live_result = analyze_match(
+            match_input=match_input,
+            bundle_path=bundle_path,
+            timeout=timeout,
+            retries=retries,
+            retry_delay=retry_delay,
+        )
+        result_output_path = body.get("result_output_path")
+        if result_output_path:
+            out = resolve_repo_path(result_output_path, create_parent=True)
+            dump_json(out, live_result)
+            result_file = str(out)
+            live_result["saved_output"] = str(out)
+        else:
+            result_file = ""
+
+    ft_score = body.get("ft_score")
+    if not ft_score:
+        raise ValueError("ft_score is required")
+
+    review = build_review(
+        match_input=match_input,
+        match_input_file=input_file,
+        live_result=live_result,
+        result_file=result_file,
+        ft_score=ft_score,
+        ht_score=body.get("ht_score", ""),
+        result_label=body.get("result_label", ""),
+        tags=body.get("tags") or [],
+        judgement=body.get("judgement", ""),
+        rule_delta=body.get("rule_delta", ""),
+        analyst=body.get("analyst", ""),
+        source=body.get("source", "api_ingest_review_test"),
+    )
+
+    review_output_path = body.get("review_output_path")
+    if review_output_path:
+        out = resolve_repo_path(review_output_path, create_parent=True)
+        dump_json(out, review)
+        review["saved_output"] = str(out)
+
+    candidate = make_candidate(review)
+    patch_output_path = body.get("patch_output_path")
+    if patch_output_path:
+        out = resolve_repo_path(patch_output_path, create_parent=True)
+        dump_json(out, candidate)
+        candidate["saved_output"] = str(out)
+        patch_ref = str(out.relative_to(ROOT_DIR))
+    else:
+        temp_patch_dir = resolve_repo_path(
+            body.get("temp_patch_dir", f"patches/api_temp_{datetime.now().strftime('%Y%m%d_%H%M%S')}"),
+            create_parent=True,
+        )
+        out = temp_patch_dir / f"{review.get('match_id', 'candidate')}.candidate.json"
+        dump_json(out, candidate)
+        candidate["saved_output"] = str(out)
+        patch_ref = str(out.relative_to(ROOT_DIR))
+
+    patch_test_output_dir = body.get(
+        "patch_test_output_dir",
+        f"patch_test_runs/api_{review.get('match_id', 'candidate')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+    )
+    patch_test_args: list[str] = [
+        "--bundle", str(bundle_path.relative_to(ROOT_DIR)),
+    ]
+    if body.get("pack_path"):
+        patch_test_args.extend(["--pack", str(resolve_repo_path(body["pack_path"]).relative_to(ROOT_DIR))])
+    patch_test_args.extend([
+        "--patch", patch_ref,
+        "--output-dir", str(resolve_repo_path(patch_test_output_dir, create_parent=True).relative_to(ROOT_DIR)),
+        "--retries", str(int(body.get("patch_test_retries", 1))),
+    ])
+    patch_test_result = run_json_script("veribet_patch_test.py", patch_test_args)
+
+    return {
+        "ok": True,
+        "live_result": live_result,
+        "review": review,
+        "candidate": candidate,
+        "patch_test": patch_test_result,
+    }
+
+
+def start_background_job(job_type: str, payload: dict[str, Any], runner: callable) -> dict[str, Any]:
+    job_id = f"{job_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
+    initial = {
+        "ok": True,
+        "job_id": job_id,
+        "job_type": job_type,
+        "status": "queued",
+        "created_at": utc_now(),
+        "updated_at": utc_now(),
+        "result": None,
+        "error": None,
+    }
+    write_job_state(job_id, initial)
+
+    def _worker() -> None:
+        running = dict(read_job_state(job_id) or initial)
+        running["status"] = "running"
+        running["updated_at"] = utc_now()
+        write_job_state(job_id, running)
+        try:
+            result = runner(payload)
+            done = dict(read_job_state(job_id) or running)
+            done["status"] = "completed"
+            done["updated_at"] = utc_now()
+            done["completed_at"] = utc_now()
+            done["result"] = result
+            write_job_state(job_id, done)
+        except Exception as exc:
+            failed = dict(read_job_state(job_id) or running)
+            failed["status"] = "failed"
+            failed["updated_at"] = utc_now()
+            failed["completed_at"] = utc_now()
+            failed["error"] = {
+                "message": str(exc),
+                "traceback": traceback.format_exc(),
+            }
+            write_job_state(job_id, failed)
+
+    thread = threading.Thread(target=_worker, daemon=True)
+    thread.start()
+    return initial
+
+
 class VeriBetAPIHandler(BaseHTTPRequestHandler):
     server_version = "VeriBetAPI/0.1"
 
@@ -305,6 +491,9 @@ class VeriBetAPIHandler(BaseHTTPRequestHandler):
                 "bundle": str(DEFAULT_BUNDLE),
             })
             return
+        if parsed.path.startswith("/api/jobs/"):
+            self.handle_job_get(parsed.path)
+            return
         self._send_json(HTTPStatus.NOT_FOUND, {"ok": False, "error": "not_found"})
 
     def do_POST(self) -> None:
@@ -334,6 +523,9 @@ class VeriBetAPIHandler(BaseHTTPRequestHandler):
                 return
             if parsed.path == "/api/ingest-review-and-test":
                 self.handle_ingest_review_and_test(body)
+                return
+            if parsed.path == "/api/jobs/ingest-review-and-test":
+                self.handle_job_ingest_review_and_test(body)
                 return
             self._send_json(HTTPStatus.NOT_FOUND, {"ok": False, "error": "not_found"})
         except ValueError as exc:
@@ -501,6 +693,17 @@ class VeriBetAPIHandler(BaseHTTPRequestHandler):
         result = run_json_script("veribet_patch_apply.py", args)
         self._send_json(HTTPStatus.OK, result)
 
+    def handle_job_get(self, path: str) -> None:
+        job_id = path.rstrip("/").split("/")[-1]
+        if not job_id:
+            self._send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "bad_request", "message": "job_id is required"})
+            return
+        state = read_job_state(job_id)
+        if state is None:
+            self._send_json(HTTPStatus.NOT_FOUND, {"ok": False, "error": "not_found", "message": f"job not found: {job_id}"})
+            return
+        self._send_json(HTTPStatus.OK, state)
+
     def handle_ingest_and_review(self, body: dict[str, Any]) -> None:
         if isinstance(body.get("input"), dict):
             match_input = body["input"]
@@ -582,111 +785,12 @@ class VeriBetAPIHandler(BaseHTTPRequestHandler):
         })
 
     def handle_ingest_review_and_test(self, body: dict[str, Any]) -> None:
-        if isinstance(body.get("input"), dict):
-            match_input = body["input"]
-            input_file = body.get("match_input_file", "")
-        else:
-            input_path = body.get("input_path")
-            if not input_path:
-                raise ValueError("input or input_path is required")
-            path = resolve_repo_path(input_path)
-            match_input = load_json(path)
-            input_file = str(path)
+        result = execute_ingest_review_and_test(body)
+        self._send_json(HTTPStatus.OK, result)
 
-        bundle_path = resolve_repo_path(body.get("bundle_path", str(DEFAULT_BUNDLE.relative_to(ROOT_DIR))))
-        timeout = int(body.get("timeout", 180))
-        retries = int(body.get("retries", 2))
-        retry_delay = float(body.get("retry_delay", 1.5))
-
-        if isinstance(body.get("result"), dict):
-            live_result = body["result"]
-            result_file = body.get("result_file", "")
-        elif body.get("result_path"):
-            path = resolve_repo_path(body["result_path"])
-            live_result = load_json(path)
-            result_file = str(path)
-        else:
-            live_result = analyze_match(
-                match_input=match_input,
-                bundle_path=bundle_path,
-                timeout=timeout,
-                retries=retries,
-                retry_delay=retry_delay,
-            )
-            result_output_path = body.get("result_output_path")
-            if result_output_path:
-                out = resolve_repo_path(result_output_path, create_parent=True)
-                dump_json(out, live_result)
-                result_file = str(out)
-                live_result["saved_output"] = str(out)
-            else:
-                result_file = ""
-
-        ft_score = body.get("ft_score")
-        if not ft_score:
-            raise ValueError("ft_score is required")
-
-        review = build_review(
-            match_input=match_input,
-            match_input_file=input_file,
-            live_result=live_result,
-            result_file=result_file,
-            ft_score=ft_score,
-            ht_score=body.get("ht_score", ""),
-            result_label=body.get("result_label", ""),
-            tags=body.get("tags") or [],
-            judgement=body.get("judgement", ""),
-            rule_delta=body.get("rule_delta", ""),
-            analyst=body.get("analyst", ""),
-            source=body.get("source", "api_ingest_review_test"),
-        )
-
-        review_output_path = body.get("review_output_path")
-        if review_output_path:
-            out = resolve_repo_path(review_output_path, create_parent=True)
-            dump_json(out, review)
-            review["saved_output"] = str(out)
-
-        candidate = make_candidate(review)
-        patch_output_path = body.get("patch_output_path")
-        if patch_output_path:
-            out = resolve_repo_path(patch_output_path, create_parent=True)
-            dump_json(out, candidate)
-            candidate["saved_output"] = str(out)
-            patch_ref = str(out.relative_to(ROOT_DIR))
-        else:
-            temp_patch_dir = resolve_repo_path(
-                body.get("temp_patch_dir", f"patches/api_temp_{datetime.now().strftime('%Y%m%d_%H%M%S')}"),
-                create_parent=True,
-            )
-            out = temp_patch_dir / f"{review.get('match_id', 'candidate')}.candidate.json"
-            dump_json(out, candidate)
-            candidate["saved_output"] = str(out)
-            patch_ref = str(out.relative_to(ROOT_DIR))
-
-        patch_test_output_dir = body.get(
-            "patch_test_output_dir",
-            f"patch_test_runs/api_{review.get('match_id', 'candidate')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-        )
-        patch_test_args: list[str] = [
-            "--bundle", str(bundle_path.relative_to(ROOT_DIR)),
-        ]
-        if body.get("pack_path"):
-            patch_test_args.extend(["--pack", str(resolve_repo_path(body["pack_path"]).relative_to(ROOT_DIR))])
-        patch_test_args.extend([
-            "--patch", patch_ref,
-            "--output-dir", str(resolve_repo_path(patch_test_output_dir, create_parent=True).relative_to(ROOT_DIR)),
-            "--retries", str(int(body.get("patch_test_retries", 1))),
-        ])
-        patch_test_result = run_json_script("veribet_patch_test.py", patch_test_args)
-
-        self._send_json(HTTPStatus.OK, {
-            "ok": True,
-            "live_result": live_result,
-            "review": review,
-            "candidate": candidate,
-            "patch_test": patch_test_result,
-        })
+    def handle_job_ingest_review_and_test(self, body: dict[str, Any]) -> None:
+        job = start_background_job("ingest_review_and_test", body, execute_ingest_review_and_test)
+        self._send_json(HTTPStatus.ACCEPTED, job)
 
 
 def main() -> int:

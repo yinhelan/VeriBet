@@ -319,6 +319,53 @@ curl -X POST http://127.0.0.1:8012/api/ingest-review-and-test \
 - 再产 candidate patch
 - 最后直接跑 `patch_test`
 
+### 异步任务模式
+
+如果你不想让 HTTP 连接一直等着回归结束，用异步任务接口：
+
+提交任务：
+
+```bash
+curl -X POST http://127.0.0.1:8012/api/jobs/ingest-review-and-test \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "input_path": "inputs/example_match.json",
+    "ft_score": "2-2",
+    "ht_score": "0-0",
+    "tags": ["主热未封口", "平局低估"],
+    "judgement": "主热承接过重但封口不足，平局兑现。",
+    "rule_delta": "联赛主热2.20~2.35且平局被显著压冷时，提高平局防守权重。",
+    "analyst": "yinhelan",
+    "result_output_path": "live_outputs/api_job.result.json",
+    "review_output_path": "reviews/api_job.review.json",
+    "patch_output_path": "patches/api_job.candidate.json",
+    "patch_test_output_dir": "patch_test_runs/api_job",
+    "patch_test_retries": 1
+  }'
+```
+
+会先返回：
+
+```json
+{
+  "ok": true,
+  "job_id": "ingest_review_and_test_...",
+  "status": "queued"
+}
+```
+
+查状态：
+
+```bash
+curl http://127.0.0.1:8012/api/jobs/<job_id>
+```
+
+状态会依次变成：
+- `queued`
+- `running`
+- `completed`
+- `failed`
+
 ## 复盘归因
 
 标准复盘模板：

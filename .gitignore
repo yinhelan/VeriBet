@@ -9,10 +9,12 @@ live_outputs_batch/
 live_outputs_batch_retry/
 live_outputs_2026-04-29/
 patch_test_runs/
+jobs/
 inputs_trial_2026-04-29/
 veribet_eval_report.json
 live_result.json
 reviews/api_*.review.json
 patches/api_*.candidate.json
+live_outputs_api_batch/
 
 .DS_Store
