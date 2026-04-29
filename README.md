@@ -366,6 +366,19 @@ curl http://127.0.0.1:8012/api/jobs/<job_id>
 - `completed`
 - `failed`
 
+异步任务返回里还会包含：
+- `stage`
+- `progress`
+- `message`
+
+例如 `stage` 可能是：
+- `load_input`
+- `analyze`
+- `review`
+- `propose`
+- `patch_test`
+- `completed`
+
 查看最近任务：
 
 ```bash

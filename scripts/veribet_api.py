@@ -375,7 +375,16 @@ def run_json_script(script_name: str, args: list[str]) -> dict[str, Any]:
         raise RuntimeError(f"{script_name} did not return valid JSON") from exc
 
 
-def execute_ingest_review_and_test(body: dict[str, Any]) -> dict[str, Any]:
+def execute_ingest_review_and_test(
+    body: dict[str, Any],
+    *,
+    progress_callback: callable | None = None,
+) -> dict[str, Any]:
+    def progress(stage: str, message: str, percent: int) -> None:
+        if progress_callback is not None:
+            progress_callback(stage, message, percent)
+
+    progress("load_input", "Loading input payload", 5)
     if isinstance(body.get("input"), dict):
         match_input = body["input"]
         input_file = body.get("match_input_file", "")
@@ -400,6 +409,7 @@ def execute_ingest_review_and_test(body: dict[str, Any]) -> dict[str, Any]:
         live_result = load_json(path)
         result_file = str(path)
     else:
+        progress("analyze", "Running live analyze", 20)
         live_result = analyze_match(
             match_input=match_input,
             bundle_path=bundle_path,
@@ -420,6 +430,7 @@ def execute_ingest_review_and_test(body: dict[str, Any]) -> dict[str, Any]:
     if not ft_score:
         raise ValueError("ft_score is required")
 
+    progress("review", "Building postmortem review", 45)
     review = build_review(
         match_input=match_input,
         match_input_file=input_file,
@@ -441,6 +452,7 @@ def execute_ingest_review_and_test(body: dict[str, Any]) -> dict[str, Any]:
         dump_json(out, review)
         review["saved_output"] = str(out)
 
+    progress("propose", "Generating candidate patch", 60)
     candidate = make_candidate(review)
     patch_output_path = body.get("patch_output_path")
     if patch_output_path:
@@ -458,6 +470,7 @@ def execute_ingest_review_and_test(body: dict[str, Any]) -> dict[str, Any]:
         candidate["saved_output"] = str(out)
         patch_ref = str(out.relative_to(ROOT_DIR))
 
+    progress("patch_test", "Running regression patch test", 75)
     patch_test_output_dir = body.get(
         "patch_test_output_dir",
         f"patch_test_runs/api_{review.get('match_id', 'candidate')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
@@ -473,6 +486,8 @@ def execute_ingest_review_and_test(body: dict[str, Any]) -> dict[str, Any]:
         "--retries", str(int(body.get("patch_test_retries", 1))),
     ])
     patch_test_result = run_json_script("veribet_patch_test.py", patch_test_args)
+
+    progress("finalize", "Finalizing job result", 95)
 
     return {
         "ok": True,
@@ -490,6 +505,9 @@ def start_background_job(job_type: str, payload: dict[str, Any], runner: callabl
         "job_id": job_id,
         "job_type": job_type,
         "status": "queued",
+        "stage": "queued",
+        "progress": 0,
+        "message": "Job queued",
         "created_at": utc_now(),
         "updated_at": utc_now(),
         "result": None,
@@ -500,12 +518,28 @@ def start_background_job(job_type: str, payload: dict[str, Any], runner: callabl
     def _worker() -> None:
         running = dict(read_job_state(job_id) or initial)
         running["status"] = "running"
+        running["stage"] = "starting"
+        running["progress"] = 1
+        running["message"] = "Job started"
         running["updated_at"] = utc_now()
         write_job_state(job_id, running)
+
+        def on_progress(stage: str, message: str, percent: int) -> None:
+            state = dict(read_job_state(job_id) or running)
+            state["status"] = "running"
+            state["stage"] = stage
+            state["progress"] = max(0, min(percent, 99))
+            state["message"] = message
+            state["updated_at"] = utc_now()
+            write_job_state(job_id, state)
+
         try:
-            result = runner(payload)
+            result = runner(payload, progress_callback=on_progress)
             done = dict(read_job_state(job_id) or running)
             done["status"] = "completed"
+            done["stage"] = "completed"
+            done["progress"] = 100
+            done["message"] = "Job completed"
             done["updated_at"] = utc_now()
             done["completed_at"] = utc_now()
             done["result"] = result
@@ -513,8 +547,10 @@ def start_background_job(job_type: str, payload: dict[str, Any], runner: callabl
         except Exception as exc:
             failed = dict(read_job_state(job_id) or running)
             failed["status"] = "failed"
+            failed["stage"] = "failed"
             failed["updated_at"] = utc_now()
             failed["completed_at"] = utc_now()
+            failed["message"] = "Job failed"
             failed["error"] = {
                 "message": str(exc),
                 "traceback": traceback.format_exc(),
