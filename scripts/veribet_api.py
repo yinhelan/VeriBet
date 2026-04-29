@@ -127,6 +127,68 @@ def analyze_match(
     raise last_exc
 
 
+def discover_input_paths(path: Path) -> list[Path]:
+    if path.is_file():
+        return [path]
+    return sorted(p for p in path.glob("*.json") if p.is_file())
+
+
+def analyze_batch(
+    *,
+    named_inputs: list[tuple[str, dict[str, Any]]],
+    bundle_path: Path = DEFAULT_BUNDLE,
+    timeout: int = 180,
+    retries: int = 2,
+    retry_delay: float = 1.5,
+    output_dir: Path | None = None,
+) -> dict[str, Any]:
+    results: list[dict[str, Any]] = []
+    failed = 0
+
+    if output_dir is not None:
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+    for input_name, match_input in named_inputs:
+        item: dict[str, Any] = {
+            "input_name": input_name,
+        }
+        try:
+            result = analyze_match(
+                match_input=match_input,
+                bundle_path=bundle_path,
+                timeout=timeout,
+                retries=retries,
+                retry_delay=retry_delay,
+            )
+            item.update({
+                "ok": result.get("ok", False),
+                "validation_errors": result.get("validation_errors", []),
+                "attempts_used": result.get("attempts_used", 1),
+                "result": result.get("result"),
+            })
+            if output_dir is not None:
+                output_path = output_dir / f"{Path(input_name).stem}.result.json"
+                dump_json(output_path, result)
+                item["saved_output"] = str(output_path)
+            if not item["ok"]:
+                failed += 1
+        except Exception as exc:
+            failed += 1
+            item.update({
+                "ok": False,
+                "error": str(exc),
+            })
+        results.append(item)
+
+    return {
+        "ok": failed == 0,
+        "total_inputs": len(named_inputs),
+        "failed_inputs": failed,
+        "results": results,
+        "bundle": str(bundle_path),
+    }
+
+
 def build_review(
     *,
     match_input: dict[str, Any],
@@ -252,6 +314,9 @@ class VeriBetAPIHandler(BaseHTTPRequestHandler):
             if parsed.path == "/api/live/analyze":
                 self.handle_live_analyze(body)
                 return
+            if parsed.path == "/api/live/batch":
+                self.handle_live_batch(body)
+                return
             if parsed.path == "/api/reviews/postmortem":
                 self.handle_postmortem(body)
                 return
@@ -287,6 +352,47 @@ class VeriBetAPIHandler(BaseHTTPRequestHandler):
             out = resolve_repo_path(output_path, create_parent=True)
             dump_json(out, result)
             result["saved_output"] = str(out)
+        self._send_json(HTTPStatus.OK, result)
+
+    def handle_live_batch(self, body: dict[str, Any]) -> None:
+        bundle_path = resolve_repo_path(body.get("bundle_path", str(DEFAULT_BUNDLE.relative_to(ROOT_DIR))))
+        timeout = int(body.get("timeout", 180))
+        retries = int(body.get("retries", 2))
+        retry_delay = float(body.get("retry_delay", 1.5))
+        output_dir_value = body.get("output_dir")
+        output_dir = resolve_repo_path(output_dir_value, create_parent=True) if output_dir_value else None
+
+        named_inputs: list[tuple[str, dict[str, Any]]] = []
+        inputs_path = body.get("inputs_path")
+        inputs = body.get("inputs")
+
+        if inputs_path:
+            input_root = resolve_repo_path(inputs_path)
+            for path in discover_input_paths(input_root):
+                named_inputs.append((path.name, load_json(path)))
+        elif isinstance(inputs, list):
+            for index, item in enumerate(inputs, start=1):
+                if not isinstance(item, dict):
+                    raise ValueError("each item in inputs must be an object")
+                input_name = item.get("name") or item.get("id") or f"batch_{index:03d}"
+                match_input = item.get("input")
+                if not isinstance(match_input, dict):
+                    raise ValueError("each batch item must include input object")
+                named_inputs.append((str(input_name), match_input))
+        else:
+            raise ValueError("inputs_path or inputs is required")
+
+        if not named_inputs:
+            raise ValueError("no input JSON files found")
+
+        result = analyze_batch(
+            named_inputs=named_inputs,
+            bundle_path=bundle_path,
+            timeout=timeout,
+            retries=retries,
+            retry_delay=retry_delay,
+            output_dir=output_dir,
+        )
         self._send_json(HTTPStatus.OK, result)
 
     def handle_postmortem(self, body: dict[str, Any]) -> None:

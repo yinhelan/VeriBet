@@ -175,6 +175,44 @@ curl -X POST http://127.0.0.1:8012/api/live/analyze \
   }'
 ```
 
+### 批量分析
+
+按目录批量跑：
+
+```bash
+curl -X POST http://127.0.0.1:8012/api/live/batch \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "inputs_path": "inputs",
+    "output_dir": "live_outputs_api_batch",
+    "retries": 2
+  }'
+```
+
+也可以直接传数组：
+
+```bash
+curl -X POST http://127.0.0.1:8012/api/live/batch \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "inputs": [
+      {
+        "name": "match_a",
+        "input": {
+          "basic_info": {
+            "competition": "Test League",
+            "match": "A vs B"
+          },
+          "snapshots": {},
+          "notes": {
+            "stage": "pre_match"
+          }
+        }
+      }
+    ]
+  }'
+```
+
 ### 生成赛后复盘
 
 ```bash
