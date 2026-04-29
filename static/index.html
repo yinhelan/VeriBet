@@ -1,0 +1,470 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VeriBet Console</title>
+  <style>
+    :root {
+      --bg: #f4f0e8;
+      --panel: #fffdf8;
+      --ink: #1f1b16;
+      --muted: #6f6558;
+      --line: #d7cdbf;
+      --accent: #0f6a5b;
+      --accent-2: #b65a2b;
+      --warn: #8f2d2d;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "PingFang SC", "Noto Sans CJK SC", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(182,90,43,.08), transparent 28%),
+        radial-gradient(circle at top right, rgba(15,106,91,.08), transparent 24%),
+        linear-gradient(180deg, #f7f3eb, var(--bg));
+      min-height: 100vh;
+    }
+    .wrap {
+      width: min(1180px, calc(100vw - 32px));
+      margin: 24px auto 40px;
+    }
+    .hero {
+      display: grid;
+      grid-template-columns: 1.2fr .8fr;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 18px;
+      box-shadow: 0 10px 30px rgba(31,27,22,.05);
+    }
+    h1, h2, h3, p { margin: 0; }
+    h1 {
+      font-size: clamp(28px, 4vw, 44px);
+      line-height: 1;
+      letter-spacing: -.03em;
+    }
+    .sub {
+      color: var(--muted);
+      margin-top: 10px;
+      line-height: 1.5;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 16px;
+    }
+    .stack { display: grid; gap: 16px; }
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      margin-top: 12px;
+    }
+    .metric {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 12px;
+      background: #fff;
+    }
+    .metric b {
+      display: block;
+      font-size: 22px;
+      margin-top: 6px;
+    }
+    .toolbar {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+    }
+    button, input, select, textarea {
+      font: inherit;
+    }
+    button {
+      border: 0;
+      border-radius: 999px;
+      padding: 10px 14px;
+      background: var(--accent);
+      color: #fff;
+      cursor: pointer;
+    }
+    button.secondary { background: #e8ddd0; color: var(--ink); }
+    button.warn { background: var(--warn); }
+    .filters {
+      display: grid;
+      gap: 10px;
+    }
+    .field {
+      display: grid;
+      gap: 6px;
+    }
+    .field label {
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .field input, .field select, .field textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+      padding: 10px 12px;
+      color: var(--ink);
+    }
+    .jobs {
+      display: grid;
+      gap: 10px;
+      max-height: 640px;
+      overflow: auto;
+      padding-right: 4px;
+    }
+    .job {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 12px;
+      background: #fff;
+    }
+    .job-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: start;
+    }
+    .job small, .muted { color: var(--muted); }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 12px;
+      background: #ece5da;
+    }
+    .pill.running { background: #e5f3ef; color: var(--accent); }
+    .pill.failed { background: #f8dfdf; color: var(--warn); }
+    .pill.completed { background: #e7efe8; color: #335a33; }
+    .progress {
+      height: 8px;
+      background: #efe6d9;
+      border-radius: 999px;
+      overflow: hidden;
+      margin-top: 10px;
+    }
+    .progress > div {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    }
+    pre {
+      margin: 0;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 12px;
+      line-height: 1.5;
+      background: #faf6ef;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 14px;
+    }
+    .detail-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .hint {
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    @media (max-width: 900px) {
+      .hero, .grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="hero">
+      <div class="card">
+        <h1>VeriBet Console</h1>
+        <p class="sub">本地面板，直接连当前 VeriBet API。可以看任务、查进度、提异步 patch test 任务，不再来回切 curl 和日志。</p>
+        <div class="toolbar">
+          <button id="refreshBtn">刷新任务</button>
+          <button class="secondary" id="healthBtn">健康检查</button>
+          <button class="secondary" id="compactBtn">精简列表</button>
+          <button class="secondary" id="verboseBtn">完整列表</button>
+        </div>
+        <div class="metrics">
+          <div class="metric">
+            <span class="muted">总任务</span>
+            <b id="metricTotal">0</b>
+          </div>
+          <div class="metric">
+            <span class="muted">运行中</span>
+            <b id="metricRunning">0</b>
+          </div>
+          <div class="metric">
+            <span class="muted">已完成</span>
+            <b id="metricCompleted">0</b>
+          </div>
+          <div class="metric">
+            <span class="muted">失败</span>
+            <b id="metricFailed">0</b>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <h2>新建异步任务</h2>
+        <p class="sub">最常用的是 `ingest-review-and-test`。填输入文件和赛果，直接发后台任务。</p>
+        <div class="filters" style="margin-top:12px;">
+          <div class="field">
+            <label>Input Path</label>
+            <input id="inputPath" value="inputs/example_match.json">
+          </div>
+          <div class="field">
+            <label>FT Score</label>
+            <input id="ftScore" value="2-2">
+          </div>
+          <div class="field">
+            <label>HT Score</label>
+            <input id="htScore" value="0-0">
+          </div>
+          <div class="field">
+            <label>Analyst</label>
+            <input id="analyst" value="yinhelan">
+          </div>
+          <button id="submitJobBtn">提交异步任务</button>
+          <p class="hint" id="submitHint">会自动写入 `live_outputs/`、`reviews/`、`patches/`、`patch_test_runs/`。</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="grid">
+      <aside class="stack">
+        <div class="card">
+          <h3>过滤器</h3>
+          <div class="filters" style="margin-top:12px;">
+            <div class="field">
+              <label>Status</label>
+              <input id="statusFilter" placeholder="running,completed">
+            </div>
+            <div class="field">
+              <label>Job Type</label>
+              <input id="jobTypeFilter" value="ingest_review_and_test">
+            </div>
+            <div class="field">
+              <label>Limit</label>
+              <input id="limitFilter" type="number" min="1" value="20">
+            </div>
+            <button id="applyFilterBtn">应用过滤</button>
+          </div>
+        </div>
+        <div class="card">
+          <h3>清理任务</h3>
+          <div class="filters" style="margin-top:12px;">
+            <div class="field">
+              <label>Keep</label>
+              <input id="cleanupKeep" type="number" min="0" value="20">
+            </div>
+            <button class="warn" id="cleanupBtn">清理 completed/failed</button>
+          </div>
+        </div>
+      </aside>
+
+      <div class="stack">
+        <div class="card">
+          <div class="detail-head">
+            <h2>任务列表</h2>
+            <small id="listModeLabel">mode: compact</small>
+          </div>
+          <div class="jobs" id="jobsList"></div>
+        </div>
+        <div class="card">
+          <div class="detail-head">
+            <h2>任务详情</h2>
+            <small id="selectedJobLabel">未选择任务</small>
+          </div>
+          <pre id="jobDetail">{}</pre>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const state = {
+      verbose: false,
+      selectedJobId: null,
+    };
+
+    const el = (id) => document.getElementById(id);
+
+    function buildQuery() {
+      const query = new URLSearchParams();
+      const status = el('statusFilter').value.trim();
+      const jobType = el('jobTypeFilter').value.trim();
+      const limit = el('limitFilter').value.trim();
+      if (status) query.set('status', status);
+      if (jobType) query.set('job_type', jobType);
+      if (limit) query.set('limit', limit);
+      if (state.verbose) query.set('verbose', '1');
+      return query.toString();
+    }
+
+    async function fetchJson(url, options = {}) {
+      const res = await fetch(url, options);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || data.error || 'request_failed');
+      return data;
+    }
+
+    function setMetrics(jobs) {
+      el('metricTotal').textContent = jobs.length;
+      el('metricRunning').textContent = jobs.filter(j => j.status === 'running').length;
+      el('metricCompleted').textContent = jobs.filter(j => j.status === 'completed').length;
+      el('metricFailed').textContent = jobs.filter(j => j.status === 'failed').length;
+    }
+
+    function renderJobs(jobs) {
+      const list = el('jobsList');
+      list.innerHTML = '';
+      setMetrics(jobs);
+      if (!jobs.length) {
+        list.innerHTML = '<div class="job"><small class="muted">暂无任务</small></div>';
+        return;
+      }
+      for (const job of jobs) {
+        const item = document.createElement('div');
+        item.className = 'job';
+        const summary = job.summary || {};
+        item.innerHTML = `
+          <div class="job-head">
+            <div>
+              <strong>${job.job_id}</strong><br>
+              <small>${job.job_type || ''}</small>
+            </div>
+            <span class="pill ${job.status || ''}">${job.status || 'unknown'}</span>
+          </div>
+          <div style="margin-top:8px;">
+            <small>stage: ${job.stage || '-'} · progress: ${job.progress ?? '-'}%</small>
+          </div>
+          <div class="progress"><div style="width:${job.progress || 0}%"></div></div>
+          <div style="margin-top:10px;" class="muted">${job.message || ''}</div>
+          <div style="margin-top:10px;">
+            <small>match: ${summary.match_id || '-'} · decision: ${summary.decision || '-'} · winner: ${summary.winner || '-'}</small>
+          </div>
+          <div class="toolbar" style="margin-top:10px;">
+            <button data-job="${job.job_id}" class="secondary action-view">详情</button>
+            <button data-job="${job.job_id}" class="warn action-delete">删除</button>
+          </div>
+        `;
+        list.appendChild(item);
+      }
+      list.querySelectorAll('.action-view').forEach(btn => {
+        btn.addEventListener('click', () => selectJob(btn.dataset.job));
+      });
+      list.querySelectorAll('.action-delete').forEach(btn => {
+        btn.addEventListener('click', () => deleteJob(btn.dataset.job));
+      });
+    }
+
+    async function loadJobs() {
+      const query = buildQuery();
+      const data = await fetchJson(`/api/jobs${query ? `?${query}` : ''}`);
+      el('listModeLabel').textContent = `mode: ${state.verbose ? 'verbose' : 'compact'}`;
+      renderJobs(data.jobs || []);
+      if (state.selectedJobId) {
+        await selectJob(state.selectedJobId, true);
+      }
+    }
+
+    async function selectJob(jobId, silent = false) {
+      try {
+        const data = await fetchJson(`/api/jobs/${jobId}`);
+        state.selectedJobId = jobId;
+        el('selectedJobLabel').textContent = jobId;
+        el('jobDetail').textContent = JSON.stringify(data, null, 2);
+      } catch (err) {
+        if (!silent) alert(err.message);
+      }
+    }
+
+    async function deleteJob(jobId) {
+      if (!confirm(`删除任务 ${jobId} ?`)) return;
+      await fetchJson(`/api/jobs/${jobId}`, { method: 'DELETE' });
+      if (state.selectedJobId === jobId) {
+        state.selectedJobId = null;
+        el('selectedJobLabel').textContent = '未选择任务';
+        el('jobDetail').textContent = '{}';
+      }
+      await loadJobs();
+    }
+
+    async function submitJob() {
+      const inputPath = el('inputPath').value.trim();
+      const ftScore = el('ftScore').value.trim();
+      const htScore = el('htScore').value.trim();
+      const analyst = el('analyst').value.trim();
+      const stem = inputPath.split('/').pop().replace(/\.json$/,'');
+      const payload = {
+        input_path: inputPath,
+        ft_score: ftScore,
+        analyst,
+        result_output_path: `live_outputs/${stem}.result.json`,
+        review_output_path: `reviews/${stem}.review.json`,
+        patch_output_path: `patches/${stem}.candidate.json`,
+        patch_test_output_dir: `patch_test_runs/${stem}`,
+        patch_test_retries: 1
+      };
+      if (htScore) payload.ht_score = htScore;
+      const data = await fetchJson('/api/jobs/ingest-review-and-test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      el('submitHint').textContent = `已提交: ${data.job_id}`;
+      state.selectedJobId = data.job_id;
+      await loadJobs();
+      await selectJob(data.job_id, true);
+    }
+
+    async function cleanupJobs() {
+      const keep = Number(el('cleanupKeep').value || '20');
+      const payload = {
+        keep,
+        statuses: ['completed', 'failed'],
+        job_types: ['ingest_review_and_test'],
+      };
+      const data = await fetchJson('/api/jobs/cleanup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      alert(`removed: ${data.removed}`);
+      await loadJobs();
+    }
+
+    async function health() {
+      const data = await fetchJson('/healthz');
+      alert(`model=${data.model}\nbase_url=${data.base_url}`);
+    }
+
+    el('refreshBtn').addEventListener('click', loadJobs);
+    el('healthBtn').addEventListener('click', health);
+    el('applyFilterBtn').addEventListener('click', loadJobs);
+    el('submitJobBtn').addEventListener('click', submitJob);
+    el('cleanupBtn').addEventListener('click', cleanupJobs);
+    el('compactBtn').addEventListener('click', async () => { state.verbose = false; await loadJobs(); });
+    el('verboseBtn').addEventListener('click', async () => { state.verbose = true; await loadJobs(); });
+
+    loadJobs().catch(err => {
+      el('jobsList').innerHTML = `<div class="job"><small class="muted">${err.message}</small></div>`;
+    });
+  </script>
+</body>
+</html>

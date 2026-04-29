@@ -642,3 +642,19 @@ scripts/veribet_api_client.sh ingest-review-and-test inputs/example_match.json 2
 ```bash
 scripts/run_api_client_examples.sh
 ```
+
+## 本地面板
+
+启动 API 后，浏览器直接打开：
+
+```text
+http://127.0.0.1:8012/
+```
+
+面板里可以直接：
+- 看任务列表
+- 看任务详情
+- 提交异步 `ingest-review-and-test`
+- 过滤任务
+- 清理任务
+- 切换 compact / verbose 列表模式

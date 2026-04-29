@@ -13,6 +13,7 @@ import uuid
 from datetime import UTC, datetime
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from mimetypes import guess_type
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
@@ -38,6 +39,7 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_BUNDLE = ROOT_DIR / "prompts" / "veribet_prompt_bundle_v412_candidate.yaml"
 DEFAULT_ENV = ROOT_DIR / ".env"
 JOBS_DIR = ROOT_DIR / "jobs"
+STATIC_DIR = ROOT_DIR / "static"
 JOB_STORE_LOCK = threading.Lock()
 JOB_STORE: dict[str, dict[str, Any]] = {}
 
@@ -647,6 +649,18 @@ class VeriBetAPIHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _send_file(self, path: Path) -> None:
+        if not path.exists() or not path.is_file():
+            self._send_json(HTTPStatus.NOT_FOUND, {"ok": False, "error": "not_found"})
+            return
+        content = path.read_bytes()
+        content_type = guess_type(path.name)[0] or "application/octet-stream"
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(content)))
+        self.end_headers()
+        self.wfile.write(content)
+
     def _read_json_body(self) -> dict[str, Any]:
         length = int(self.headers.get("Content-Length", "0") or "0")
         raw = self.rfile.read(length) if length > 0 else b"{}"
@@ -662,6 +676,19 @@ class VeriBetAPIHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
+        if parsed.path in {"/", "/index.html"}:
+            self._send_file(STATIC_DIR / "index.html")
+            return
+        if parsed.path.startswith("/static/"):
+            relative = parsed.path.removeprefix("/static/")
+            file_path = (STATIC_DIR / relative).resolve()
+            try:
+                file_path.relative_to(STATIC_DIR.resolve())
+            except ValueError:
+                self._send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "bad_request", "message": "invalid static path"})
+                return
+            self._send_file(file_path)
+            return
         if parsed.path == "/healthz":
             self._send_json(HTTPStatus.OK, {
                 "ok": True,
