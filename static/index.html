@@ -244,6 +244,40 @@
           <p class="hint" id="submitHint">会自动写入 `live_outputs/`、`reviews/`、`patches/`、`patch_test_runs/`。</p>
         </div>
       </div>
+      <div class="card">
+        <h2>顶级赛事扫描</h2>
+        <p class="sub">按内置 10 个赛事预设提交 `scan-top-day` 异步任务。适合每天先扫一遍当天哪些预设有比赛。</p>
+        <div class="filters" style="margin-top:12px;">
+          <div class="field">
+            <label>Date</label>
+            <input id="scanDate" value="2026-04-29">
+          </div>
+          <div class="field">
+            <label>API-SPORTS Season</label>
+            <input id="scanSeason" value="2025">
+          </div>
+          <div class="field">
+            <label>Presets</label>
+            <input id="scanPresets" value="epl,championship,ucl" placeholder="epl,championship,ucl">
+          </div>
+          <div class="field">
+            <label>Only Active</label>
+            <select id="scanOnlyActive">
+              <option value="true" selected>true</option>
+              <option value="false">false</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Run Live</label>
+            <select id="scanRunLive">
+              <option value="false" selected>false</option>
+              <option value="true">true</option>
+            </select>
+          </div>
+          <button id="submitScanBtn">提交扫描任务</button>
+          <p class="hint" id="scanHint">会进入 jobs 队列，完成后可在详情里看 `active_presets` 和各预设摘要。</p>
+        </div>
+      </div>
     </section>
 
     <section class="grid">
@@ -463,6 +497,28 @@
       await loadJobs();
     }
 
+    async function submitScanJob() {
+      const date = el('scanDate').value.trim();
+      const apiSportsSeason = el('scanSeason').value.trim();
+      const presetsRaw = el('scanPresets').value.trim();
+      const onlyActive = el('scanOnlyActive').value === 'true';
+      const runLive = el('scanRunLive').value === 'true';
+      const payload = { date, only_active: onlyActive, run_live: runLive };
+      if (apiSportsSeason) payload.api_sports_season = apiSportsSeason;
+      if (presetsRaw) {
+        payload.presets = presetsRaw.split(',').map(x => x.trim()).filter(Boolean);
+      }
+      const data = await fetchJson('/api/jobs/scan-top-day', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      el('scanHint').textContent = `已提交扫描任务: ${data.job_id}`;
+      state.selectedJobId = data.job_id;
+      await loadJobs();
+      await selectJob(data.job_id, true);
+    }
+
     async function health() {
       const data = await fetchJson('/healthz');
       alert(`model=${data.model}\nbase_url=${data.base_url}`);
@@ -491,6 +547,7 @@
       await loadJobs();
     });
     el('submitJobBtn').addEventListener('click', submitJob);
+    el('submitScanBtn').addEventListener('click', submitScanJob);
     el('cleanupBtn').addEventListener('click', cleanupJobs);
     el('compactBtn').addEventListener('click', async () => { state.verbose = false; await loadJobs(); });
     el('verboseBtn').addEventListener('click', async () => { state.verbose = true; await loadJobs(); });
