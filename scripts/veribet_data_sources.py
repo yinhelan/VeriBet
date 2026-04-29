@@ -607,6 +607,7 @@ def scan_top_day(
     run_live: bool = False,
     export_base_dir: str | None = None,
     live_output_base_dir: str | None = None,
+    only_active: bool = False,
 ) -> dict[str, Any]:
     export_root = export_base_dir or f"inputs_auto_{date}"
     live_root = live_output_base_dir or f"live_outputs_auto_{date}"
@@ -661,18 +662,27 @@ def scan_top_day(
         item["summary"] = summary
         results.append(item)
 
+    active_results = [
+        item for item in results
+        if ((item.get("summary") or {}).get("merged_count") or 0) > 0
+    ]
+    visible_results = active_results if only_active else results
+
     return {
         "ok": ok_count == len(results),
         "date": date,
         "run_live": run_live,
+        "only_active": only_active,
         "presets": presets,
         "api_sports_season": api_sports_season,
         "export_base_dir": export_root,
         "live_output_base_dir": live_root if run_live else None,
         "total_presets": len(results),
         "ok_presets": ok_count,
-        "results": results,
-        "summaries": [item["summary"] for item in results],
+        "active_presets": len(active_results),
+        "results": visible_results,
+        "summaries": [item["summary"] for item in visible_results],
+        "active_summaries": [item["summary"] for item in active_results],
     }
 
 
@@ -731,6 +741,7 @@ def main() -> int:
     p_scan.add_argument("--run-live", action="store_true", help="Also run VeriBet live batch for each preset")
     p_scan.add_argument("--export-base-dir", help="Base repo-relative directory for exported inputs")
     p_scan.add_argument("--live-output-base-dir", help="Base repo-relative directory for live outputs when --run-live is used")
+    p_scan.add_argument("--only-active", action="store_true", help="Only keep presets with merged_count > 0 in results/summaries")
 
     args = parser.parse_args()
     load_env_file(Path(args.env_file))
@@ -782,6 +793,7 @@ def main() -> int:
             run_live=args.run_live,
             export_base_dir=args.export_base_dir,
             live_output_base_dir=args.live_output_base_dir,
+            only_active=args.only_active,
         )
     else:
         raise SystemExit(f"unsupported command: {args.command}")

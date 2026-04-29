@@ -838,11 +838,22 @@ cp .env.data_sources.example .env.data_sources
 
 这个命令会返回：
 - `summaries`
+- `active_summaries`
 - `results`
 
 其中：
 - `summaries` 适合快速看每个预设有没有抓到比赛
+- `active_summaries` 只保留当天有比赛的预设
 - `results` 里保留对应预设的完整返回
+
+如果你每天只想看“有比赛的预设”，直接加：
+
+```bash
+.venv/bin/python scripts/veribet_data_sources.py scan-top-day \
+  --date 2026-04-29 \
+  --api-sports-season 2025 \
+  --only-active
+```
 
 快速例子：
 
