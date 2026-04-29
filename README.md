@@ -780,6 +780,7 @@ cp .env.data_sources.example .env.data_sources
 - 现在只保留目标日期的比赛
 - `veribet_candidates` 是可继续补 `snapshots` 的 VeriBet 输入骨架
 - `--competition` 会按赛事名做不区分大小写的包含过滤
+- `--preset` 现在会自动带默认的 `The Odds API sport key`
 - `--api-sports-league/--api-sports-season/--api-sports-team` 会直接透传到 API-SPORTS
 - `--football-data-competition` 会直接透传到 football-data
 - `--export-dir` 会把 `veribet_candidates` 直接写成仓库内的 `*.json`
@@ -806,7 +807,7 @@ cp .env.data_sources.example .env.data_sources
 其中：
 - `aggregate` 是抓取和导出阶段结果
 - `live` 是批量跑 `VeriBet` live 的结果摘要
-- `--preset` 会自动带出内置的 `API-SPORTS league id` 和 `football-data code`
+- `--preset` 会自动带出内置的 `The Odds API sport key`、`API-SPORTS league id` 和 `football-data code`
 
 快速例子：
 

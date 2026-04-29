@@ -31,51 +31,61 @@ TOP_COMPETITION_PRESETS: dict[str, dict[str, str | None]] = {
         "label": "Premier League",
         "api_sports_league": "39",
         "football_data_competition": "PL",
+        "odds_api_sport": "soccer_epl",
     },
     "championship": {
         "label": "Championship",
         "api_sports_league": "40",
         "football_data_competition": "ELC",
+        "odds_api_sport": "soccer_efl_champ",
     },
     "bundesliga": {
         "label": "Bundesliga",
         "api_sports_league": "78",
         "football_data_competition": "BL1",
+        "odds_api_sport": "soccer_germany_bundesliga",
     },
     "laliga": {
         "label": "La Liga",
         "api_sports_league": "140",
         "football_data_competition": "PD",
+        "odds_api_sport": "soccer_spain_la_liga",
     },
     "serie_a": {
         "label": "Serie A",
         "api_sports_league": "135",
         "football_data_competition": "SA",
+        "odds_api_sport": "soccer_italy_serie_a",
     },
     "ligue_1": {
         "label": "Ligue 1",
         "api_sports_league": "61",
         "football_data_competition": "FL1",
+        "odds_api_sport": "soccer_france_ligue_one",
     },
     "ucl": {
         "label": "UEFA Champions League",
         "api_sports_league": "2",
         "football_data_competition": "CL",
+        "odds_api_sport": "soccer_uefa_champs_league",
     },
     "world_cup": {
         "label": "FIFA World Cup",
         "api_sports_league": "1",
         "football_data_competition": "WC",
+        "odds_api_sport": "soccer_fifa_world_cup",
     },
     "nations_league": {
         "label": "UEFA Nations League",
         "api_sports_league": "5",
         "football_data_competition": None,
+        "odds_api_sport": "soccer_uefa_nations_league",
     },
     "conference_league": {
         "label": "UEFA Europa Conference League",
         "api_sports_league": "848",
         "football_data_competition": None,
+        "odds_api_sport": "soccer_uefa_europa_conference_league",
     },
 }
 
@@ -96,16 +106,18 @@ def load_env_file(path: Path) -> None:
 
 def resolve_preset(
     preset: str | None,
+    sport: str | None,
     api_sports_league: str | None,
     football_data_competition: str | None,
     competition_filter: str | None,
-) -> tuple[str | None, str | None, str | None]:
+) -> tuple[str | None, str | None, str | None, str | None]:
     if not preset:
-        return api_sports_league, football_data_competition, competition_filter
+        return sport, api_sports_league, football_data_competition, competition_filter
     if preset not in TOP_COMPETITION_PRESETS:
         raise SystemExit(f"未知 preset: {preset}")
     chosen = TOP_COMPETITION_PRESETS[preset]
     return (
+        sport or chosen.get("odds_api_sport"),
         api_sports_league or chosen.get("api_sports_league"),
         football_data_competition or chosen.get("football_data_competition"),
         competition_filter or chosen.get("label"),
@@ -120,6 +132,7 @@ def list_top_competitions() -> dict[str, Any]:
             {
                 "preset": key,
                 "label": value.get("label"),
+                "odds_api_sport": value.get("odds_api_sport"),
                 "api_sports_league": value.get("api_sports_league"),
                 "football_data_competition": value.get("football_data_competition"),
             }
@@ -378,7 +391,7 @@ def run_live_batch_for_inputs(
 
 def aggregate_day(
     date: str,
-    sport: str = "soccer_epl",
+    sport: str | None = None,
     preset: str | None = None,
     competition_filter: str | None = None,
     export_dir: str | None = None,
@@ -387,15 +400,17 @@ def aggregate_day(
     api_sports_team: str | None = None,
     football_data_competition: str | None = None,
 ) -> dict[str, Any]:
-    api_sports_league, football_data_competition, competition_filter = resolve_preset(
+    sport, api_sports_league, football_data_competition, competition_filter = resolve_preset(
         preset,
+        sport,
         api_sports_league,
         football_data_competition,
         competition_filter,
     )
+    actual_sport = sport or "soccer_epl"
     fd = football_data_matches(date, date, football_data_competition)
     api = api_sports_fixtures(date, api_sports_league, api_sports_season, api_sports_team)
-    odds = odds_api_scores(sport, None)
+    odds = odds_api_scores(actual_sport, None)
 
     aggregate: dict[str, dict[str, Any]] = {}
 
@@ -486,7 +501,7 @@ def aggregate_day(
     return {
         "ok": True,
         "date": date,
-        "sport": sport,
+        "sport": actual_sport,
         "preset": preset,
         "competition_filter": competition_filter,
         "export_dir": export_dir,
@@ -526,7 +541,7 @@ def aggregate_day(
 
 def fetch_and_run_live_day(
     date: str,
-    sport: str = "soccer_epl",
+    sport: str | None = None,
     preset: str | None = None,
     competition_filter: str | None = None,
     export_dir: str | None = None,
@@ -600,7 +615,7 @@ def main() -> int:
 
     p_agg = sub.add_parser("aggregate-day", help="Fetch one day from multiple sources and build a merged view")
     p_agg.add_argument("--date", required=True)
-    p_agg.add_argument("--sport", default="soccer_epl")
+    p_agg.add_argument("--sport")
     p_agg.add_argument("--preset", choices=sorted(TOP_COMPETITION_PRESETS.keys()))
     p_agg.add_argument("--competition", help="Case-insensitive substring filter on competition/league name")
     p_agg.add_argument("--export-dir", help="Write veribet_candidates into this repo-relative directory")
@@ -611,7 +626,7 @@ def main() -> int:
 
     p_fetch_live = sub.add_parser("fetch-live-day", help="Fetch one day, export inputs, and run VeriBet live batch")
     p_fetch_live.add_argument("--date", required=True)
-    p_fetch_live.add_argument("--sport", default="soccer_epl")
+    p_fetch_live.add_argument("--sport")
     p_fetch_live.add_argument("--preset", choices=sorted(TOP_COMPETITION_PRESETS.keys()))
     p_fetch_live.add_argument("--competition", help="Case-insensitive substring filter on competition/league name")
     p_fetch_live.add_argument("--export-dir", help="Repo-relative directory to write input JSON files")
