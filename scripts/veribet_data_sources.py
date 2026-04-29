@@ -8,9 +8,10 @@ import os
 import ssl
 import subprocess
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 import re
 import time
+import unicodedata
 import urllib.parse
 import urllib.error
 import urllib.request
@@ -26,6 +27,13 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_ENV = ROOT_DIR / ".env.data_sources"
 DEFAULT_RETRIES = 2
 DEFAULT_RETRY_DELAY = 1.0
+LOCAL_TZ = timezone(timedelta(hours=8))
+TEAM_ALIASES = {
+    "club atletico de madrid": "atletico madrid",
+    "atletico madrid": "atletico madrid",
+    "arsenal fc": "arsenal",
+    "arsenal": "arsenal",
+}
 TOP_COMPETITION_PRESETS: dict[str, dict[str, str | None]] = {
     "epl": {
         "label": "Premier League",
@@ -271,7 +279,12 @@ def safe_slug(text: str) -> str:
 
 
 def normalize_name(text: str) -> str:
-    return " ".join((text or "").lower().replace("&", " and ").split())
+    text = unicodedata.normalize("NFKD", (text or ""))
+    text = "".join(ch for ch in text if not unicodedata.combining(ch))
+    text = text.lower().replace("&", " and ")
+    text = re.sub(r"[^a-z0-9]+", " ", text)
+    compact = " ".join(text.split())
+    return TEAM_ALIASES.get(compact, compact)
 
 
 def extract_date(value: str | None) -> str:
@@ -295,6 +308,36 @@ def parse_kickoff(value: str | None) -> str | None:
         return dt.isoformat()
     except ValueError:
         return text
+
+
+def parse_datetime(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    normalized = text.replace("Z", "+00:00")
+    try:
+        dt = datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def local_date_for_kickoff(value: str | None) -> str:
+    dt = parse_datetime(value)
+    if dt is None:
+        return extract_date(value)
+    return dt.astimezone(LOCAL_TZ).date().isoformat()
+
+
+def utc_query_dates_for_local_date(value: str) -> tuple[str, str]:
+    local_day = datetime.strptime(value, "%Y-%m-%d").date()
+    prev_utc = (local_day - timedelta(days=1)).isoformat()
+    current_utc = local_day.isoformat()
+    return prev_utc, current_utc
 
 
 def match_key(home: str, away: str, date: str) -> str:
@@ -418,8 +461,23 @@ def aggregate_day(
         competition_filter,
     )
     actual_sport = sport or "soccer_epl"
-    fd = football_data_matches(date, date, football_data_competition)
-    api = api_sports_fixtures(date, api_sports_league, api_sports_season, api_sports_team)
+    utc_prev_date, utc_current_date = utc_query_dates_for_local_date(date)
+    fd = football_data_matches(utc_prev_date, utc_current_date, football_data_competition)
+    api_primary = api_sports_fixtures(utc_prev_date, api_sports_league, api_sports_season, api_sports_team)
+    api_secondary = api_sports_fixtures(utc_current_date, api_sports_league, api_sports_season, api_sports_team)
+    api_response = list(api_primary.get("response", []))
+    seen_fixture_ids = {
+        ((item.get("fixture") or {}).get("id"))
+        for item in api_response
+        if ((item.get("fixture") or {}).get("id")) is not None
+    }
+    for item in api_secondary.get("response", []):
+        fixture_id = ((item.get("fixture") or {}).get("id"))
+        if fixture_id is not None and fixture_id in seen_fixture_ids:
+            continue
+        if fixture_id is not None:
+            seen_fixture_ids.add(fixture_id)
+        api_response.append(item)
     odds = odds_api_scores(actual_sport, None)
 
     aggregate: dict[str, dict[str, Any]] = {}
@@ -428,7 +486,7 @@ def aggregate_day(
         home = ((item.get("homeTeam") or {}).get("name") or "").strip()
         away = ((item.get("awayTeam") or {}).get("name") or "").strip()
         kickoff = item.get("utcDate", "")
-        item_date = extract_date(kickoff) or date
+        item_date = local_date_for_kickoff(kickoff) or date
         if item_date != date:
             continue
         key = match_key(home, away, item_date)
@@ -447,13 +505,13 @@ def aggregate_day(
             "matchday": item.get("matchday"),
         }
 
-    for item in api.get("response", []):
+    for item in api_response:
         fixture = item.get("fixture") or {}
         teams = item.get("teams") or {}
         home = ((teams.get("home") or {}).get("name") or "").strip()
         away = ((teams.get("away") or {}).get("name") or "").strip()
         kickoff = fixture.get("date", "")
-        item_date = extract_date(kickoff) or date
+        item_date = local_date_for_kickoff(kickoff) or date
         if item_date != date:
             continue
         key = match_key(home, away, item_date)
@@ -477,7 +535,7 @@ def aggregate_day(
         home = (item.get("home_team") or "").strip()
         away = (item.get("away_team") or "").strip()
         kickoff = item.get("commence_time", "")
-        item_date = extract_date(kickoff) or date
+        item_date = local_date_for_kickoff(kickoff) or date
         if item_date != date:
             continue
         key = match_key(home, away, item_date)
@@ -520,12 +578,12 @@ def aggregate_day(
         "api_sports_team": api_sports_team,
         "football_data_competition": football_data_competition,
         "notes": [
-            "aggregate-day 现在只保留目标日期的比赛。",
+            "aggregate-day 现在按 Asia/Shanghai 本地日期归属比赛。",
             "veribet_candidates 是可直接继续补充快照字段的 VeriBet 输入骨架。",
         ],
         "source_counts": {
             "football_data_matches": len(fd.get("matches", [])),
-            "api_sports_fixtures": len(api.get("response", [])),
+            "api_sports_fixtures": len(api_response),
             "odds_api_scores": len(odds.get("data", [])),
         },
         "merged_count": len(merged),
@@ -536,10 +594,18 @@ def aggregate_day(
         "raw": {
             "football_data": fd,
             "api_sports": {
-                "get": api.get("get"),
-                "parameters": api.get("parameters"),
-                "results": api.get("results"),
-                "paging": api.get("paging"),
+                "get": api_primary.get("get") or api_secondary.get("get"),
+                "parameters": {
+                    "date_queries": [utc_prev_date, utc_current_date],
+                    "league": api_sports_league,
+                    "season": api_sports_season,
+                    "team": api_sports_team,
+                },
+                "results": len(api_response),
+                "paging": {
+                    "current": 1,
+                    "total": 2,
+                },
             },
             "odds_api": {
                 "x-requests-remaining": odds.get("x-requests-remaining"),

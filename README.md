@@ -820,7 +820,7 @@ cp .env.data_sources.example .env.data_sources
 
 其中：
 - `merged` 是按 `home_team / away_team / date` 做的基础合并视图
-- 现在只保留目标日期的比赛
+- 现在按 `Asia/Shanghai` 本地日期归属比赛
 - `veribet_candidates` 是可继续补 `snapshots` 的 VeriBet 输入骨架
 - `--competition` 会按赛事名做不区分大小写的包含过滤
 - `--preset` 现在会自动带默认的 `The Odds API sport key`

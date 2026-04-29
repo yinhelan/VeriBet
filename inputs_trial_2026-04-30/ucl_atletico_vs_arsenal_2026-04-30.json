@@ -1,0 +1,39 @@
+{
+  "basic_info": {
+    "competition": "UEFA Champions League",
+    "match": "Atletico Madrid vs Arsenal",
+    "kick_off": "2026-04-30 03:00",
+    "venue": "Riyadh Air Metropolitano",
+    "weather": "Cloudy with rain / isolated thunderstorms, 15C, wind 2.9m/s"
+  },
+  "snapshots": {
+    "T_last": {
+      "total_volume": 11462001,
+      "home": {
+        "price": 3.45,
+        "volume": 3292261,
+        "share": 28.72,
+        "pnl": 103701,
+        "heat": -4
+      },
+      "draw": {
+        "price": 3.40,
+        "volume": 2676757,
+        "share": 23.35,
+        "pnl": 2361027,
+        "heat": -21
+      },
+      "away": {
+        "price": 2.40,
+        "volume": 5492983,
+        "share": 47.93,
+        "pnl": -1721158,
+        "heat": 18
+      }
+    }
+  },
+  "notes": {
+    "stage": "pre_match",
+    "european_leg": "first_leg"
+  }
+}
