@@ -120,6 +120,54 @@ def list_job_states(limit: int = 20) -> list[dict[str, Any]]:
     return states
 
 
+def delete_job_state(job_id: str) -> bool:
+    removed = False
+    with JOB_STORE_LOCK:
+        if job_id in JOB_STORE:
+            del JOB_STORE[job_id]
+            removed = True
+    path = get_job_path(job_id)
+    if path.exists():
+        path.unlink()
+        removed = True
+    return removed
+
+
+def cleanup_job_states(*, keep: int = 20, statuses: set[str] | None = None) -> dict[str, Any]:
+    JOBS_DIR.mkdir(parents=True, exist_ok=True)
+    paths = sorted(JOBS_DIR.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+    removed_ids: list[str] = []
+    kept_ids: list[str] = []
+
+    for index, path in enumerate(paths):
+        try:
+            state = load_json(path)
+        except Exception:
+            state = {"job_id": path.stem, "status": "unknown"}
+        job_id = str(state.get("job_id") or path.stem)
+        status = str(state.get("status") or "")
+        should_keep = index < keep
+        if statuses is not None and status not in statuses:
+            should_keep = True
+        if should_keep:
+            kept_ids.append(job_id)
+            continue
+        with JOB_STORE_LOCK:
+            JOB_STORE.pop(job_id, None)
+        try:
+            path.unlink()
+            removed_ids.append(job_id)
+        except FileNotFoundError:
+            pass
+
+    return {
+        "ok": True,
+        "kept": len(kept_ids),
+        "removed": len(removed_ids),
+        "removed_job_ids": removed_ids,
+    }
+
+
 def analyze_match(
     *,
     match_input: dict[str, Any],
@@ -512,6 +560,13 @@ class VeriBetAPIHandler(BaseHTTPRequestHandler):
             return
         self._send_json(HTTPStatus.NOT_FOUND, {"ok": False, "error": "not_found"})
 
+    def do_DELETE(self) -> None:
+        parsed = urlparse(self.path)
+        if parsed.path.startswith("/api/jobs/"):
+            self.handle_job_delete(parsed.path)
+            return
+        self._send_json(HTTPStatus.NOT_FOUND, {"ok": False, "error": "not_found"})
+
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
         try:
@@ -542,6 +597,9 @@ class VeriBetAPIHandler(BaseHTTPRequestHandler):
                 return
             if parsed.path == "/api/jobs/ingest-review-and-test":
                 self.handle_job_ingest_review_and_test(body)
+                return
+            if parsed.path == "/api/jobs/cleanup":
+                self.handle_job_cleanup(body)
                 return
             self._send_json(HTTPStatus.NOT_FOUND, {"ok": False, "error": "not_found"})
         except ValueError as exc:
@@ -727,6 +785,29 @@ class VeriBetAPIHandler(BaseHTTPRequestHandler):
             "count": len(jobs),
             "jobs": jobs,
         })
+
+    def handle_job_delete(self, path: str) -> None:
+        job_id = path.rstrip("/").split("/")[-1]
+        if not job_id:
+            self._send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "bad_request", "message": "job_id is required"})
+            return
+        removed = delete_job_state(job_id)
+        if not removed:
+            self._send_json(HTTPStatus.NOT_FOUND, {"ok": False, "error": "not_found", "message": f"job not found: {job_id}"})
+            return
+        self._send_json(HTTPStatus.OK, {
+            "ok": True,
+            "deleted_job_id": job_id,
+        })
+
+    def handle_job_cleanup(self, body: dict[str, Any]) -> None:
+        keep = int(body.get("keep", 20))
+        raw_statuses = body.get("statuses")
+        statuses: set[str] | None = None
+        if isinstance(raw_statuses, list):
+            statuses = {str(item) for item in raw_statuses if str(item)}
+        result = cleanup_job_states(keep=keep, statuses=statuses)
+        self._send_json(HTTPStatus.OK, result)
 
     def handle_ingest_and_review(self, body: dict[str, Any]) -> None:
         if isinstance(body.get("input"), dict):

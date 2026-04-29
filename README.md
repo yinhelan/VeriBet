@@ -372,6 +372,23 @@ curl http://127.0.0.1:8012/api/jobs/<job_id>
 curl http://127.0.0.1:8012/api/jobs
 ```
 
+删除单个任务：
+
+```bash
+curl -X DELETE http://127.0.0.1:8012/api/jobs/<job_id>
+```
+
+批量清理旧任务：
+
+```bash
+curl -X POST http://127.0.0.1:8012/api/jobs/cleanup \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "keep": 20,
+    "statuses": ["completed", "failed"]
+  }'
+```
+
 ## 复盘归因
 
 标准复盘模板：
