@@ -10,7 +10,7 @@ import threading
 import time
 import traceback
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -79,7 +79,7 @@ def load_json(path: Path) -> dict[str, Any]:
 
 
 def utc_now() -> str:
-    return datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    return datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
 def get_job_path(job_id: str) -> Path:
@@ -105,6 +105,19 @@ def read_job_state(job_id: str) -> dict[str, Any] | None:
             JOB_STORE[job_id] = state
         return state
     return None
+
+
+def list_job_states(limit: int = 20) -> list[dict[str, Any]]:
+    JOBS_DIR.mkdir(parents=True, exist_ok=True)
+    states: list[dict[str, Any]] = []
+    for path in sorted(JOBS_DIR.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
+        try:
+            states.append(load_json(path))
+        except Exception:
+            continue
+        if len(states) >= limit:
+            break
+    return states
 
 
 def analyze_match(
@@ -491,6 +504,9 @@ class VeriBetAPIHandler(BaseHTTPRequestHandler):
                 "bundle": str(DEFAULT_BUNDLE),
             })
             return
+        if parsed.path == "/api/jobs":
+            self.handle_job_list()
+            return
         if parsed.path.startswith("/api/jobs/"):
             self.handle_job_get(parsed.path)
             return
@@ -703,6 +719,14 @@ class VeriBetAPIHandler(BaseHTTPRequestHandler):
             self._send_json(HTTPStatus.NOT_FOUND, {"ok": False, "error": "not_found", "message": f"job not found: {job_id}"})
             return
         self._send_json(HTTPStatus.OK, state)
+
+    def handle_job_list(self) -> None:
+        jobs = list_job_states(limit=20)
+        self._send_json(HTTPStatus.OK, {
+            "ok": True,
+            "count": len(jobs),
+            "jobs": jobs,
+        })
 
     def handle_ingest_and_review(self, body: dict[str, Any]) -> None:
         if isinstance(body.get("input"), dict):

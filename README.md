@@ -366,6 +366,12 @@ curl http://127.0.0.1:8012/api/jobs/<job_id>
 - `completed`
 - `failed`
 
+查看最近任务：
+
+```bash
+curl http://127.0.0.1:8012/api/jobs
+```
+
 ## 复盘归因
 
 标准复盘模板：
