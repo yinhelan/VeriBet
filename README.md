@@ -671,6 +671,18 @@ scripts/run_api_client_examples.sh
 - `API-SPORTS`
 - `The Odds API`
 
+内置只保留这 10 个常用赛事预设：
+- `epl`
+- `championship`
+- `bundesliga`
+- `laliga`
+- `serie_a`
+- `ligue_1`
+- `ucl`
+- `world_cup`
+- `nations_league`
+- `conference_league`
+
 先准备本地密钥文件：
 
 ```bash
@@ -681,6 +693,12 @@ cp .env.data_sources.example .env.data_sources
 
 ```bash
 .venv/bin/python scripts/veribet_data_sources.py check
+```
+
+查看内置赛事预设：
+
+```bash
+.venv/bin/python scripts/veribet_data_sources.py top-competitions
 ```
 
 拉取 `football-data.org` 赛事列表：
@@ -741,6 +759,15 @@ cp .env.data_sources.example .env.data_sources
   --export-dir inputs_auto_pl_2026-04-29
 ```
 
+如果你只想用内置顶级赛事预设，直接这样写：
+
+```bash
+.venv/bin/python scripts/veribet_data_sources.py aggregate-day \
+  --date 2026-04-29 \
+  --preset championship \
+  --export-dir inputs_auto_championship_2026-04-29
+```
+
 这个命令会返回：
 - `source_counts`
 - `merged_count`
@@ -766,12 +793,10 @@ cp .env.data_sources.example .env.data_sources
 ```bash
 .venv/bin/python scripts/veribet_data_sources.py fetch-live-day \
   --date 2026-04-29 \
-  --sport soccer_epl \
-  --api-sports-league 39 \
+  --preset championship \
   --api-sports-season 2025 \
-  --football-data-competition PL \
-  --export-dir inputs_auto_pl_2026-04-29 \
-  --live-output-dir live_outputs_auto_pl_2026-04-29
+  --export-dir inputs_auto_championship_2026-04-29 \
+  --live-output-dir live_outputs_auto_championship_2026-04-29
 ```
 
 这个命令会返回两部分：
@@ -781,6 +806,7 @@ cp .env.data_sources.example .env.data_sources
 其中：
 - `aggregate` 是抓取和导出阶段结果
 - `live` 是批量跑 `VeriBet` live 的结果摘要
+- `--preset` 会自动带出内置的 `API-SPORTS league id` 和 `football-data code`
 
 快速例子：
 

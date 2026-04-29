@@ -26,6 +26,58 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_ENV = ROOT_DIR / ".env.data_sources"
 DEFAULT_RETRIES = 2
 DEFAULT_RETRY_DELAY = 1.0
+TOP_COMPETITION_PRESETS: dict[str, dict[str, str | None]] = {
+    "epl": {
+        "label": "Premier League",
+        "api_sports_league": "39",
+        "football_data_competition": "PL",
+    },
+    "championship": {
+        "label": "Championship",
+        "api_sports_league": "40",
+        "football_data_competition": "ELC",
+    },
+    "bundesliga": {
+        "label": "Bundesliga",
+        "api_sports_league": "78",
+        "football_data_competition": "BL1",
+    },
+    "laliga": {
+        "label": "La Liga",
+        "api_sports_league": "140",
+        "football_data_competition": "PD",
+    },
+    "serie_a": {
+        "label": "Serie A",
+        "api_sports_league": "135",
+        "football_data_competition": "SA",
+    },
+    "ligue_1": {
+        "label": "Ligue 1",
+        "api_sports_league": "61",
+        "football_data_competition": "FL1",
+    },
+    "ucl": {
+        "label": "UEFA Champions League",
+        "api_sports_league": "2",
+        "football_data_competition": "CL",
+    },
+    "world_cup": {
+        "label": "FIFA World Cup",
+        "api_sports_league": "1",
+        "football_data_competition": "WC",
+    },
+    "nations_league": {
+        "label": "UEFA Nations League",
+        "api_sports_league": "5",
+        "football_data_competition": None,
+    },
+    "conference_league": {
+        "label": "UEFA Europa Conference League",
+        "api_sports_league": "848",
+        "football_data_competition": None,
+    },
+}
 
 
 def load_env_file(path: Path) -> None:
@@ -40,6 +92,40 @@ def load_env_file(path: Path) -> None:
         value = value.strip()
         if key:
             os.environ[key] = value
+
+
+def resolve_preset(
+    preset: str | None,
+    api_sports_league: str | None,
+    football_data_competition: str | None,
+    competition_filter: str | None,
+) -> tuple[str | None, str | None, str | None]:
+    if not preset:
+        return api_sports_league, football_data_competition, competition_filter
+    if preset not in TOP_COMPETITION_PRESETS:
+        raise SystemExit(f"未知 preset: {preset}")
+    chosen = TOP_COMPETITION_PRESETS[preset]
+    return (
+        api_sports_league or chosen.get("api_sports_league"),
+        football_data_competition or chosen.get("football_data_competition"),
+        competition_filter or chosen.get("label"),
+    )
+
+
+def list_top_competitions() -> dict[str, Any]:
+    return {
+        "ok": True,
+        "count": len(TOP_COMPETITION_PRESETS),
+        "presets": [
+            {
+                "preset": key,
+                "label": value.get("label"),
+                "api_sports_league": value.get("api_sports_league"),
+                "football_data_competition": value.get("football_data_competition"),
+            }
+            for key, value in TOP_COMPETITION_PRESETS.items()
+        ],
+    }
 
 
 def open_url(
@@ -293,6 +379,7 @@ def run_live_batch_for_inputs(
 def aggregate_day(
     date: str,
     sport: str = "soccer_epl",
+    preset: str | None = None,
     competition_filter: str | None = None,
     export_dir: str | None = None,
     api_sports_league: str | None = None,
@@ -300,6 +387,12 @@ def aggregate_day(
     api_sports_team: str | None = None,
     football_data_competition: str | None = None,
 ) -> dict[str, Any]:
+    api_sports_league, football_data_competition, competition_filter = resolve_preset(
+        preset,
+        api_sports_league,
+        football_data_competition,
+        competition_filter,
+    )
     fd = football_data_matches(date, date, football_data_competition)
     api = api_sports_fixtures(date, api_sports_league, api_sports_season, api_sports_team)
     odds = odds_api_scores(sport, None)
@@ -394,6 +487,7 @@ def aggregate_day(
         "ok": True,
         "date": date,
         "sport": sport,
+        "preset": preset,
         "competition_filter": competition_filter,
         "export_dir": export_dir,
         "api_sports_league": api_sports_league,
@@ -433,6 +527,7 @@ def aggregate_day(
 def fetch_and_run_live_day(
     date: str,
     sport: str = "soccer_epl",
+    preset: str | None = None,
     competition_filter: str | None = None,
     export_dir: str | None = None,
     api_sports_league: str | None = None,
@@ -447,6 +542,7 @@ def fetch_and_run_live_day(
     aggregate = aggregate_day(
         date=date,
         sport=sport,
+        preset=preset,
         competition_filter=competition_filter,
         export_dir=actual_export_dir,
         api_sports_league=api_sports_league,
@@ -485,6 +581,7 @@ def main() -> int:
     sub = parser.add_subparsers(dest="command", required=True)
 
     sub.add_parser("check", help="Check which data-source keys are configured")
+    sub.add_parser("top-competitions", help="List built-in top competition presets")
     sub.add_parser("football-data-competitions", help="List football-data competitions")
     p_matches = sub.add_parser("football-data-matches", help="List football-data matches")
     p_matches.add_argument("--date-from")
@@ -504,6 +601,7 @@ def main() -> int:
     p_agg = sub.add_parser("aggregate-day", help="Fetch one day from multiple sources and build a merged view")
     p_agg.add_argument("--date", required=True)
     p_agg.add_argument("--sport", default="soccer_epl")
+    p_agg.add_argument("--preset", choices=sorted(TOP_COMPETITION_PRESETS.keys()))
     p_agg.add_argument("--competition", help="Case-insensitive substring filter on competition/league name")
     p_agg.add_argument("--export-dir", help="Write veribet_candidates into this repo-relative directory")
     p_agg.add_argument("--api-sports-league", help="Exact API-SPORTS league id filter")
@@ -514,6 +612,7 @@ def main() -> int:
     p_fetch_live = sub.add_parser("fetch-live-day", help="Fetch one day, export inputs, and run VeriBet live batch")
     p_fetch_live.add_argument("--date", required=True)
     p_fetch_live.add_argument("--sport", default="soccer_epl")
+    p_fetch_live.add_argument("--preset", choices=sorted(TOP_COMPETITION_PRESETS.keys()))
     p_fetch_live.add_argument("--competition", help="Case-insensitive substring filter on competition/league name")
     p_fetch_live.add_argument("--export-dir", help="Repo-relative directory to write input JSON files")
     p_fetch_live.add_argument("--api-sports-league", help="Exact API-SPORTS league id filter")
@@ -529,6 +628,8 @@ def main() -> int:
 
     if args.command == "check":
         result = {"ok": True, "configured": check_sources()}
+    elif args.command == "top-competitions":
+        result = list_top_competitions()
     elif args.command == "football-data-competitions":
         result = football_data_competitions()
     elif args.command == "football-data-matches":
@@ -541,6 +642,7 @@ def main() -> int:
         result = aggregate_day(
             args.date,
             args.sport,
+            args.preset,
             args.competition,
             args.export_dir,
             args.api_sports_league,
@@ -552,6 +654,7 @@ def main() -> int:
         result = fetch_and_run_live_day(
             date=args.date,
             sport=args.sport,
+            preset=args.preset,
             competition_filter=args.competition,
             export_dir=args.export_dir,
             api_sports_league=args.api_sports_league,
