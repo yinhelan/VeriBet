@@ -723,8 +723,16 @@ cp .env.data_sources.example .env.data_sources
 - `source_counts`
 - `merged_count`
 - `merged`
+- `veribet_candidates`
 
-其中 `merged` 是按 `home_team / away_team / date` 做的基础合并视图。
+其中：
+- `merged` 是按 `home_team / away_team / date` 做的基础合并视图
+- 现在只保留目标日期的比赛
+- `veribet_candidates` 是可继续补 `snapshots` 的 VeriBet 输入骨架
+
+如果你只是想先拿“当天比赛清单 + 基础骨架”，优先看：
+- `merged`
+- `veribet_candidates`
 
 快速例子：
 

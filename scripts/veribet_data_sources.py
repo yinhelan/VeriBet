@@ -6,6 +6,7 @@ import json
 import os
 import ssl
 import sys
+from datetime import datetime
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -143,8 +144,61 @@ def normalize_name(text: str) -> str:
     return " ".join((text or "").lower().replace("&", " and ").split())
 
 
+def extract_date(value: str | None) -> str:
+    if not value:
+        return ""
+    text = str(value).strip()
+    if not text:
+        return ""
+    return text[:10]
+
+
+def parse_kickoff(value: str | None) -> str | None:
+    if not value:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    normalized = text.replace("Z", "+00:00")
+    try:
+        dt = datetime.fromisoformat(normalized)
+        return dt.isoformat()
+    except ValueError:
+        return text
+
+
 def match_key(home: str, away: str, date: str) -> str:
     return f"{normalize_name(home)}__{normalize_name(away)}__{date}"
+
+
+def build_veribet_candidate(item: dict[str, Any]) -> dict[str, Any]:
+    football_data = (item.get("sources") or {}).get("football_data") or {}
+    api_sports = (item.get("sources") or {}).get("api_sports") or {}
+    odds_api = (item.get("sources") or {}).get("odds_api") or {}
+    competition = football_data.get("competition") or api_sports.get("league") or odds_api.get("sport_title")
+    kickoff = football_data.get("kickoff") or api_sports.get("kickoff") or odds_api.get("kickoff")
+    notes: dict[str, Any] = {"stage": "pre_match"}
+    if football_data.get("matchday") is not None:
+        notes["matchday"] = football_data.get("matchday")
+    if api_sports.get("round"):
+        notes["round"] = api_sports.get("round")
+    if odds_api.get("completed") is not None:
+        notes["odds_api_completed"] = odds_api.get("completed")
+
+    candidate = {
+        "basic_info": {
+            "competition": competition,
+            "match": f"{item.get('home_team')} vs {item.get('away_team')}",
+            "kick_off": parse_kickoff(kickoff),
+            "venue": None,
+            "weather": None,
+        },
+        "snapshots": {},
+        "notes": notes,
+        "source_match_key": item.get("match_key"),
+        "source_coverage": sorted((item.get("sources") or {}).keys()),
+    }
+    return candidate
 
 
 def aggregate_day(date: str, sport: str = "soccer_epl") -> dict[str, Any]:
@@ -158,10 +212,13 @@ def aggregate_day(date: str, sport: str = "soccer_epl") -> dict[str, Any]:
         home = ((item.get("homeTeam") or {}).get("name") or "").strip()
         away = ((item.get("awayTeam") or {}).get("name") or "").strip()
         kickoff = item.get("utcDate", "")
-        key = match_key(home, away, kickoff[:10] or date)
+        item_date = extract_date(kickoff) or date
+        if item_date != date:
+            continue
+        key = match_key(home, away, item_date)
         aggregate.setdefault(key, {
             "match_key": key,
-            "date": kickoff[:10] or date,
+            "date": item_date,
             "home_team": home,
             "away_team": away,
             "sources": {},
@@ -180,10 +237,13 @@ def aggregate_day(date: str, sport: str = "soccer_epl") -> dict[str, Any]:
         home = ((teams.get("home") or {}).get("name") or "").strip()
         away = ((teams.get("away") or {}).get("name") or "").strip()
         kickoff = fixture.get("date", "")
-        key = match_key(home, away, kickoff[:10] or date)
+        item_date = extract_date(kickoff) or date
+        if item_date != date:
+            continue
+        key = match_key(home, away, item_date)
         aggregate.setdefault(key, {
             "match_key": key,
-            "date": kickoff[:10] or date,
+            "date": item_date,
             "home_team": home,
             "away_team": away,
             "sources": {},
@@ -201,10 +261,13 @@ def aggregate_day(date: str, sport: str = "soccer_epl") -> dict[str, Any]:
         home = (item.get("home_team") or "").strip()
         away = (item.get("away_team") or "").strip()
         kickoff = item.get("commence_time", "")
-        key = match_key(home, away, kickoff[:10] or date)
+        item_date = extract_date(kickoff) or date
+        if item_date != date:
+            continue
+        key = match_key(home, away, item_date)
         aggregate.setdefault(key, {
             "match_key": key,
-            "date": kickoff[:10] or date,
+            "date": item_date,
             "home_team": home,
             "away_team": away,
             "sources": {},
@@ -219,10 +282,15 @@ def aggregate_day(date: str, sport: str = "soccer_epl") -> dict[str, Any]:
         }
 
     merged = sorted(aggregate.values(), key=lambda x: (x.get("date") or "", x.get("home_team") or "", x.get("away_team") or ""))
+    veribet_candidates = [build_veribet_candidate(item) for item in merged]
     return {
         "ok": True,
         "date": date,
         "sport": sport,
+        "notes": [
+            "aggregate-day 现在只保留目标日期的比赛。",
+            "veribet_candidates 是可直接继续补充快照字段的 VeriBet 输入骨架。",
+        ],
         "source_counts": {
             "football_data_matches": len(fd.get("matches", [])),
             "api_sports_fixtures": len(api.get("response", [])),
@@ -230,6 +298,8 @@ def aggregate_day(date: str, sport: str = "soccer_epl") -> dict[str, Any]:
         },
         "merged_count": len(merged),
         "merged": merged,
+        "veribet_candidates_count": len(veribet_candidates),
+        "veribet_candidates": veribet_candidates,
         "raw": {
             "football_data": fd,
             "api_sports": {
