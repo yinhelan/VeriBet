@@ -263,6 +263,32 @@ curl -X POST http://127.0.0.1:8012/api/patches/apply \
   }'
 ```
 
+### 单接口串联：分析 + 复盘 + 候选补丁
+
+如果你赛后想一条请求直接完成整条链路：
+
+```bash
+curl -X POST http://127.0.0.1:8012/api/ingest-and-review \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "input_path": "inputs/example_match.json",
+    "ft_score": "2-2",
+    "ht_score": "0-0",
+    "tags": ["主热未封口", "平局低估"],
+    "judgement": "主热承接过重但封口不足，平局兑现。",
+    "rule_delta": "联赛主热2.20~2.35且平局被显著压冷时，提高平局防守权重。",
+    "analyst": "yinhelan",
+    "result_output_path": "live_outputs/api_ingest.result.json",
+    "review_output_path": "reviews/api_ingest.review.json",
+    "patch_output_path": "patches/api_ingest.candidate.json"
+  }'
+```
+
+这个接口会：
+- 如未提供 `result` / `result_path`，先跑 live analyze
+- 自动生成 review
+- 自动生成 candidate patch
+
 ## 复盘归因
 
 标准复盘模板：
