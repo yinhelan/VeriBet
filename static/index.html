@@ -274,7 +274,10 @@
               <option value="true">true</option>
             </select>
           </div>
-          <button id="submitScanBtn">提交扫描任务</button>
+          <div class="toolbar" style="margin-top:4px;">
+            <button id="submitScanBtn">提交扫描任务</button>
+            <button class="secondary" id="submitDefaultScanBtn">一键扫 10 个预设</button>
+          </div>
           <p class="hint" id="scanHint">会进入 jobs 队列，完成后可在详情里看 `active_presets` 和各预设摘要。</p>
         </div>
       </div>
@@ -384,6 +387,11 @@
         const item = document.createElement('div');
         item.className = 'job';
         const summary = job.summary || {};
+        let summaryLine = `match: ${summary.match_id || '-'} · decision: ${summary.decision || '-'} · winner: ${summary.winner || '-'}`;
+        if (job.job_type === 'scan_top_day') {
+          const presets = Array.isArray(summary.presets) ? summary.presets.join(',') : '-';
+          summaryLine = `active: ${summary.active_presets ?? '-'} / ${summary.total_presets ?? '-'} · run_live: ${summary.run_live ?? '-'} · presets: ${presets}`;
+        }
         item.innerHTML = `
           <div class="job-head">
             <div>
@@ -398,7 +406,7 @@
           <div class="progress"><div style="width:${job.progress || 0}%"></div></div>
           <div style="margin-top:10px;" class="muted">${job.message || ''}</div>
           <div style="margin-top:10px;">
-            <small>match: ${summary.match_id || '-'} · decision: ${summary.decision || '-'} · winner: ${summary.winner || '-'}</small>
+            <small>${summaryLine}</small>
           </div>
           <div class="toolbar" style="margin-top:10px;">
             <button data-job="${job.job_id}" class="secondary action-view">详情</button>
@@ -498,6 +506,14 @@
     }
 
     async function submitScanJob() {
+      return submitScanJobWithPresets(false);
+    }
+
+    async function submitDefaultScanJob() {
+      return submitScanJobWithPresets(true);
+    }
+
+    async function submitScanJobWithPresets(useAllPresets) {
       const date = el('scanDate').value.trim();
       const apiSportsSeason = el('scanSeason').value.trim();
       const presetsRaw = el('scanPresets').value.trim();
@@ -505,7 +521,7 @@
       const runLive = el('scanRunLive').value === 'true';
       const payload = { date, only_active: onlyActive, run_live: runLive };
       if (apiSportsSeason) payload.api_sports_season = apiSportsSeason;
-      if (presetsRaw) {
+      if (!useAllPresets && presetsRaw) {
         payload.presets = presetsRaw.split(',').map(x => x.trim()).filter(Boolean);
       }
       const data = await fetchJson('/api/jobs/scan-top-day', {
@@ -513,7 +529,7 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      el('scanHint').textContent = `已提交扫描任务: ${data.job_id}`;
+      el('scanHint').textContent = `已提交扫描任务: ${data.job_id}${useAllPresets ? '（10 个预设）' : ''}`;
       state.selectedJobId = data.job_id;
       await loadJobs();
       await selectJob(data.job_id, true);
@@ -548,6 +564,7 @@
     });
     el('submitJobBtn').addEventListener('click', submitJob);
     el('submitScanBtn').addEventListener('click', submitScanJob);
+    el('submitDefaultScanBtn').addEventListener('click', submitDefaultScanJob);
     el('cleanupBtn').addEventListener('click', cleanupJobs);
     el('compactBtn').addEventListener('click', async () => { state.verbose = false; await loadJobs(); });
     el('verboseBtn').addEventListener('click', async () => { state.verbose = true; await loadJobs(); });
