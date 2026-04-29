@@ -621,3 +621,24 @@ git push -u origin main
 - live 批量可跑
 - 复盘归因脚本可生成标准 review JSON
 - `VB-009` 风险等级修正已生效
+
+## 命令行客户端
+
+已经提供一个本地客户端脚本，避免每次手写 `curl`：
+
+```bash
+scripts/veribet_api_client.sh health
+scripts/veribet_api_client.sh jobs
+scripts/veribet_api_client.sh jobs "status=running&job_type=ingest_review_and_test&limit=10"
+scripts/veribet_api_client.sh job <job_id>
+scripts/veribet_api_client.sh delete-job <job_id>
+scripts/veribet_api_client.sh cleanup 20
+scripts/veribet_api_client.sh batch-dir inputs live_outputs_api_batch
+scripts/veribet_api_client.sh ingest-review-and-test inputs/example_match.json 2-2 0-0
+```
+
+快速例子：
+
+```bash
+scripts/run_api_client_examples.sh
+```
