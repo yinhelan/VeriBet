@@ -140,6 +140,15 @@ def summarize_job_state(state: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(result, dict):
         return summary
 
+    if result.get("total_presets") is not None:
+        summary["total_presets"] = result.get("total_presets")
+        summary["active_presets"] = result.get("active_presets")
+        summary["run_live"] = result.get("run_live")
+        presets = result.get("presets")
+        if isinstance(presets, list):
+            summary["presets"] = presets
+        return summary
+
     review = result.get("review")
     if isinstance(review, dict):
         if review.get("match_id"):
@@ -452,6 +461,43 @@ def run_data_sources_script(args: list[str]) -> dict[str, Any]:
     return run_json_script("veribet_data_sources.py", args)
 
 
+def execute_scan_top_day(
+    body: dict[str, Any],
+    *,
+    progress_callback: callable | None = None,
+) -> dict[str, Any]:
+    def progress(stage: str, message: str, percent: int) -> None:
+        if progress_callback is not None:
+            progress_callback(stage, message, percent)
+
+    date = str(body.get("date") or "").strip()
+    if not date:
+        raise ValueError("date is required")
+
+    progress("prepare", "Preparing top competition scan", 10)
+    args = ["scan-top-day", "--date", date]
+    if body.get("api_sports_season"):
+        args.extend(["--api-sports-season", str(body["api_sports_season"])])
+    if body.get("presets"):
+        presets = body["presets"]
+        if not isinstance(presets, list) or not all(isinstance(item, str) for item in presets):
+            raise ValueError("presets must be an array of strings")
+        args.extend(["--presets", ",".join(presets)])
+    if body.get("run_live"):
+        args.append("--run-live")
+    if body.get("only_active"):
+        args.append("--only-active")
+    if body.get("export_base_dir"):
+        args.extend(["--export-base-dir", str(body["export_base_dir"])])
+    if body.get("live_output_base_dir"):
+        args.extend(["--live-output-base-dir", str(body["live_output_base_dir"])])
+
+    progress("scan", "Running top competition scan", 40)
+    result = run_data_sources_script(args)
+    progress("finalize", "Finalizing scan result", 95)
+    return result
+
+
 def execute_ingest_review_and_test(
     body: dict[str, Any],
     *,
@@ -727,6 +773,9 @@ class VeriBetAPIHandler(BaseHTTPRequestHandler):
             if parsed.path == "/api/data-sources/scan-top-day":
                 self.handle_data_sources_scan_top_day(body)
                 return
+            if parsed.path == "/api/jobs/scan-top-day":
+                self.handle_job_scan_top_day(body)
+                return
             if parsed.path == "/api/live/analyze":
                 self.handle_live_analyze(body)
                 return
@@ -851,6 +900,10 @@ class VeriBetAPIHandler(BaseHTTPRequestHandler):
 
         result = run_data_sources_script(args)
         self._send_json(HTTPStatus.OK, result)
+
+    def handle_job_scan_top_day(self, body: dict[str, Any]) -> None:
+        job = start_background_job("scan_top_day", body, execute_scan_top_day)
+        self._send_json(HTTPStatus.ACCEPTED, job)
 
     def handle_postmortem(self, body: dict[str, Any]) -> None:
         if isinstance(body.get("input"), dict):

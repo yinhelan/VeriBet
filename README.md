@@ -257,6 +257,26 @@ curl -X POST http://127.0.0.1:8012/api/data-sources/scan-top-day \
   }'
 ```
 
+如果你不想让扫描请求一直占住连接，用异步任务：
+
+```bash
+curl -X POST http://127.0.0.1:8012/api/jobs/scan-top-day \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "date": "2026-04-29",
+    "api_sports_season": "2025",
+    "presets": ["epl", "championship", "ucl"],
+    "only_active": true
+  }'
+```
+
+然后用现有任务接口查：
+
+```bash
+curl http://127.0.0.1:8012/api/jobs
+curl http://127.0.0.1:8012/api/jobs/<job_id>
+```
+
 ### 生成赛后复盘
 
 ```bash
