@@ -32,6 +32,7 @@ veribet/
     veribet_eval.py
     veribet_live.py
     veribet_live_batch.py
+    veribet_api.py
     veribet_postmortem.py
     veribet_rule_proposer.py
     veribet_patch_test.py
@@ -41,6 +42,7 @@ veribet/
     run_veribet_resilient.sh
     run_live.sh
     run_live_batch.sh
+    run_api.sh
   inputs/
     live_match_input.json
     example_match.json
@@ -131,6 +133,97 @@ scripts/run_live_batch.sh inputs live_outputs_batch
 ```
 
 这会读取 `inputs/` 下所有 `*.json`，每个输入生成一个 `.result.json`。
+
+## API 自动化
+
+启动本地 API：
+
+```bash
+scripts/run_api.sh
+```
+
+默认监听：
+
+```text
+http://127.0.0.1:8012
+```
+
+### 健康检查
+
+```bash
+curl http://127.0.0.1:8012/healthz
+```
+
+### 单场分析
+
+```bash
+curl -X POST http://127.0.0.1:8012/api/live/analyze \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "input": {
+      "basic_info": {
+        "competition": "English Premier League",
+        "match": "Brighton vs Newcastle"
+      },
+      "snapshots": {},
+      "notes": {
+        "stage": "pre_match"
+      }
+    },
+    "retries": 2,
+    "output_path": "live_outputs/api_example.result.json"
+  }'
+```
+
+### 生成赛后复盘
+
+```bash
+curl -X POST http://127.0.0.1:8012/api/reviews/postmortem \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "input_path": "inputs/example_match.json",
+    "result_path": "live_outputs/example_single.result.json",
+    "ft_score": "2-2",
+    "ht_score": "0-0",
+    "tags": ["主热未封口", "平局低估"],
+    "judgement": "主热承接过重但封口不足，平局兑现。",
+    "rule_delta": "联赛主热2.20~2.35且平局被显著压冷时，提高平局防守权重。",
+    "analyst": "yinhelan",
+    "output_path": "reviews/example_match.review.json"
+  }'
+```
+
+### 生成候选补丁
+
+```bash
+curl -X POST http://127.0.0.1:8012/api/patches/propose \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "review_path": "reviews/example_match.review.json",
+    "output_path": "patches/example_match.candidate.json"
+  }'
+```
+
+### 跑补丁验证
+
+```bash
+curl -X POST http://127.0.0.1:8012/api/patches/test \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "patch_paths": ["patches/example_match.candidate.json"],
+    "output_dir": "patch_test_runs/api_example"
+  }'
+```
+
+### 应用通过验证的补丁
+
+```bash
+curl -X POST http://127.0.0.1:8012/api/patches/apply \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "summary_path": "patch_test_runs/api_example/summary.json"
+  }'
+```
 
 ## 复盘归因
 
