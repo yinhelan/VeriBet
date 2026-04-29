@@ -199,6 +199,7 @@
           <button class="secondary" id="healthBtn">健康检查</button>
           <button class="secondary" id="compactBtn">精简列表</button>
           <button class="secondary" id="verboseBtn">完整列表</button>
+          <button class="secondary" id="pollToggleBtn">自动轮询: 开</button>
         </div>
         <div class="metrics">
           <div class="metric">
@@ -262,6 +263,10 @@
               <label>Limit</label>
               <input id="limitFilter" type="number" min="1" value="20">
             </div>
+            <div class="field">
+              <label>Poll Interval (sec)</label>
+              <input id="pollInterval" type="number" min="2" value="5">
+            </div>
             <button id="applyFilterBtn">应用过滤</button>
           </div>
         </div>
@@ -300,6 +305,9 @@
     const state = {
       verbose: false,
       selectedJobId: null,
+      autoPoll: true,
+      pollTimer: null,
+      loading: false,
     };
 
     const el = (id) => document.getElementById(id);
@@ -374,12 +382,18 @@
     }
 
     async function loadJobs() {
+      if (state.loading) return;
+      state.loading = true;
       const query = buildQuery();
-      const data = await fetchJson(`/api/jobs${query ? `?${query}` : ''}`);
-      el('listModeLabel').textContent = `mode: ${state.verbose ? 'verbose' : 'compact'}`;
-      renderJobs(data.jobs || []);
-      if (state.selectedJobId) {
-        await selectJob(state.selectedJobId, true);
+      try {
+        const data = await fetchJson(`/api/jobs${query ? `?${query}` : ''}`);
+        el('listModeLabel').textContent = `mode: ${state.verbose ? 'verbose' : 'compact'}`;
+        renderJobs(data.jobs || []);
+        if (state.selectedJobId) {
+          await selectJob(state.selectedJobId, true);
+        }
+      } finally {
+        state.loading = false;
       }
     }
 
@@ -454,14 +468,41 @@
       alert(`model=${data.model}\nbase_url=${data.base_url}`);
     }
 
+    function restartPolling() {
+      if (state.pollTimer) {
+        clearInterval(state.pollTimer);
+        state.pollTimer = null;
+      }
+      if (!state.autoPoll) return;
+      const seconds = Math.max(2, Number(el('pollInterval').value || '5'));
+      state.pollTimer = setInterval(() => {
+        loadJobs().catch(() => {});
+      }, seconds * 1000);
+    }
+
+    function updatePollButton() {
+      el('pollToggleBtn').textContent = `自动轮询: ${state.autoPoll ? '开' : '关'}`;
+    }
+
     el('refreshBtn').addEventListener('click', loadJobs);
     el('healthBtn').addEventListener('click', health);
-    el('applyFilterBtn').addEventListener('click', loadJobs);
+    el('applyFilterBtn').addEventListener('click', async () => {
+      restartPolling();
+      await loadJobs();
+    });
     el('submitJobBtn').addEventListener('click', submitJob);
     el('cleanupBtn').addEventListener('click', cleanupJobs);
     el('compactBtn').addEventListener('click', async () => { state.verbose = false; await loadJobs(); });
     el('verboseBtn').addEventListener('click', async () => { state.verbose = true; await loadJobs(); });
+    el('pollToggleBtn').addEventListener('click', () => {
+      state.autoPoll = !state.autoPoll;
+      updatePollButton();
+      restartPolling();
+    });
+    el('pollInterval').addEventListener('change', restartPolling);
 
+    updatePollButton();
+    restartPolling();
     loadJobs().catch(err => {
       el('jobsList').innerHTML = `<div class="job"><small class="muted">${err.message}</small></div>`;
     });
