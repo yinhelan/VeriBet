@@ -419,7 +419,8 @@ curl -X POST http://127.0.0.1:8012/api/jobs/cleanup \
   -H 'Content-Type: application/json' \
   -d '{
     "keep": 20,
-    "statuses": ["completed", "failed"]
+    "statuses": ["completed", "failed"],
+    "job_types": ["ingest_review_and_test"]
   }'
 ```
 

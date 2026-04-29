@@ -208,7 +208,12 @@ def delete_job_state(job_id: str) -> bool:
     return removed
 
 
-def cleanup_job_states(*, keep: int = 20, statuses: set[str] | None = None) -> dict[str, Any]:
+def cleanup_job_states(
+    *,
+    keep: int = 20,
+    statuses: set[str] | None = None,
+    job_types: set[str] | None = None,
+) -> dict[str, Any]:
     JOBS_DIR.mkdir(parents=True, exist_ok=True)
     paths = sorted(JOBS_DIR.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
     removed_ids: list[str] = []
@@ -221,8 +226,11 @@ def cleanup_job_states(*, keep: int = 20, statuses: set[str] | None = None) -> d
             state = {"job_id": path.stem, "status": "unknown"}
         job_id = str(state.get("job_id") or path.stem)
         status = str(state.get("status") or "")
+        job_type = str(state.get("job_type") or "")
         should_keep = index < keep
         if statuses is not None and status not in statuses:
+            should_keep = True
+        if job_types is not None and job_type not in job_types:
             should_keep = True
         if should_keep:
             kept_ids.append(job_id)
@@ -951,7 +959,11 @@ class VeriBetAPIHandler(BaseHTTPRequestHandler):
         statuses: set[str] | None = None
         if isinstance(raw_statuses, list):
             statuses = {str(item) for item in raw_statuses if str(item)}
-        result = cleanup_job_states(keep=keep, statuses=statuses)
+        raw_job_types = body.get("job_types")
+        job_types: set[str] | None = None
+        if isinstance(raw_job_types, list):
+            job_types = {str(item) for item in raw_job_types if str(item)}
+        result = cleanup_job_states(keep=keep, statuses=statuses, job_types=job_types)
         self._send_json(HTTPStatus.OK, result)
 
     def handle_ingest_and_review(self, body: dict[str, Any]) -> None:
