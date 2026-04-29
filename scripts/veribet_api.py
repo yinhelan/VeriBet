@@ -15,7 +15,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from veribet_live import (
     build_system_prompt,
@@ -107,14 +107,26 @@ def read_job_state(job_id: str) -> dict[str, Any] | None:
     return None
 
 
-def list_job_states(limit: int = 20) -> list[dict[str, Any]]:
+def list_job_states(
+    limit: int = 20,
+    *,
+    status_filter: set[str] | None = None,
+    job_type_filter: set[str] | None = None,
+) -> list[dict[str, Any]]:
     JOBS_DIR.mkdir(parents=True, exist_ok=True)
     states: list[dict[str, Any]] = []
     for path in sorted(JOBS_DIR.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
         try:
-            states.append(load_json(path))
+            state = load_json(path)
         except Exception:
             continue
+        status = str(state.get("status") or "")
+        job_type = str(state.get("job_type") or "")
+        if status_filter is not None and status not in status_filter:
+            continue
+        if job_type_filter is not None and job_type not in job_type_filter:
+            continue
+        states.append(state)
         if len(states) >= limit:
             break
     return states
@@ -553,7 +565,7 @@ class VeriBetAPIHandler(BaseHTTPRequestHandler):
             })
             return
         if parsed.path == "/api/jobs":
-            self.handle_job_list()
+            self.handle_job_list(parsed.query)
             return
         if parsed.path.startswith("/api/jobs/"):
             self.handle_job_get(parsed.path)
@@ -778,11 +790,35 @@ class VeriBetAPIHandler(BaseHTTPRequestHandler):
             return
         self._send_json(HTTPStatus.OK, state)
 
-    def handle_job_list(self) -> None:
-        jobs = list_job_states(limit=20)
+    def handle_job_list(self, query: str) -> None:
+        params = parse_qs(query, keep_blank_values=False)
+        limit = 20
+        if "limit" in params and params["limit"]:
+            limit = max(1, int(params["limit"][-1]))
+        status_filter = None
+        if "status" in params:
+            values = [item for raw in params["status"] for item in raw.split(",") if item]
+            if values:
+                status_filter = set(values)
+        job_type_filter = None
+        if "job_type" in params:
+            values = [item for raw in params["job_type"] for item in raw.split(",") if item]
+            if values:
+                job_type_filter = set(values)
+
+        jobs = list_job_states(
+            limit=limit,
+            status_filter=status_filter,
+            job_type_filter=job_type_filter,
+        )
         self._send_json(HTTPStatus.OK, {
             "ok": True,
             "count": len(jobs),
+            "filters": {
+                "limit": limit,
+                "status": sorted(status_filter) if status_filter else [],
+                "job_type": sorted(job_type_filter) if job_type_filter else [],
+            },
             "jobs": jobs,
         })
 

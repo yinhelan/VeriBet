@@ -372,6 +372,12 @@ curl http://127.0.0.1:8012/api/jobs/<job_id>
 curl http://127.0.0.1:8012/api/jobs
 ```
 
+按条件过滤最近任务：
+
+```bash
+curl "http://127.0.0.1:8012/api/jobs?status=running&job_type=ingest_review_and_test&limit=10"
+```
+
 删除单个任务：
 
 ```bash
