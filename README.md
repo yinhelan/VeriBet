@@ -809,6 +809,41 @@ cp .env.data_sources.example .env.data_sources
 - `live` 是批量跑 `VeriBet` live 的结果摘要
 - `--preset` 会自动带出内置的 `The Odds API sport key`、`API-SPORTS league id` 和 `football-data code`
 
+如果你想把这 10 个预设当天一次性扫一遍：
+
+```bash
+.venv/bin/python scripts/veribet_data_sources.py scan-top-day \
+  --date 2026-04-29 \
+  --api-sports-season 2025
+```
+
+只扫其中几个：
+
+```bash
+.venv/bin/python scripts/veribet_data_sources.py scan-top-day \
+  --date 2026-04-29 \
+  --api-sports-season 2025 \
+  --presets epl,championship,ucl
+```
+
+如果你还想顺手批量跑 live：
+
+```bash
+.venv/bin/python scripts/veribet_data_sources.py scan-top-day \
+  --date 2026-04-29 \
+  --api-sports-season 2025 \
+  --presets championship,ucl \
+  --run-live
+```
+
+这个命令会返回：
+- `summaries`
+- `results`
+
+其中：
+- `summaries` 适合快速看每个预设有没有抓到比赛
+- `results` 里保留对应预设的完整返回
+
 快速例子：
 
 ```bash

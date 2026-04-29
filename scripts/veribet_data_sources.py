@@ -141,6 +141,16 @@ def list_top_competitions() -> dict[str, Any]:
     }
 
 
+def parse_presets_arg(raw: str | None) -> list[str]:
+    if not raw:
+        return list(TOP_COMPETITION_PRESETS.keys())
+    presets = [item.strip() for item in raw.split(",") if item.strip()]
+    unknown = [item for item in presets if item not in TOP_COMPETITION_PRESETS]
+    if unknown:
+        raise SystemExit(f"未知 preset: {', '.join(unknown)}")
+    return presets
+
+
 def open_url(
     req: urllib.request.Request,
     timeout: int = 30,
@@ -590,6 +600,82 @@ def fetch_and_run_live_day(
     }
 
 
+def scan_top_day(
+    date: str,
+    presets: list[str],
+    api_sports_season: str | None = None,
+    run_live: bool = False,
+    export_base_dir: str | None = None,
+    live_output_base_dir: str | None = None,
+) -> dict[str, Any]:
+    export_root = export_base_dir or f"inputs_auto_{date}"
+    live_root = live_output_base_dir or f"live_outputs_auto_{date}"
+    results: list[dict[str, Any]] = []
+    ok_count = 0
+    for preset in presets:
+        export_dir = f"{export_root}/{preset}"
+        if run_live:
+            live_output_dir = f"{live_root}/{preset}"
+            item = fetch_and_run_live_day(
+                date=date,
+                preset=preset,
+                api_sports_season=api_sports_season,
+                export_dir=export_dir,
+                live_output_dir=live_output_dir,
+            )
+            aggregate = item.get("aggregate") or {}
+            live = item.get("live") or {}
+            summary = {
+                "preset": preset,
+                "ok": item.get("ok"),
+                "sport": aggregate.get("sport"),
+                "merged_count": aggregate.get("merged_count"),
+                "veribet_candidates_count": aggregate.get("veribet_candidates_count"),
+                "exported_files": len(aggregate.get("exported_files") or []),
+                "live_ok": live.get("ok"),
+                "live_skipped": live.get("skipped", False),
+            }
+        else:
+            aggregate = aggregate_day(
+                date=date,
+                preset=preset,
+                api_sports_season=api_sports_season,
+                export_dir=export_dir,
+            )
+            item = {
+                "ok": aggregate.get("ok"),
+                "date": date,
+                "inputs_dir": export_dir,
+                "aggregate": aggregate,
+            }
+            summary = {
+                "preset": preset,
+                "ok": aggregate.get("ok"),
+                "sport": aggregate.get("sport"),
+                "merged_count": aggregate.get("merged_count"),
+                "veribet_candidates_count": aggregate.get("veribet_candidates_count"),
+                "exported_files": len(aggregate.get("exported_files") or []),
+            }
+        if item.get("ok"):
+            ok_count += 1
+        item["summary"] = summary
+        results.append(item)
+
+    return {
+        "ok": ok_count == len(results),
+        "date": date,
+        "run_live": run_live,
+        "presets": presets,
+        "api_sports_season": api_sports_season,
+        "export_base_dir": export_root,
+        "live_output_base_dir": live_root if run_live else None,
+        "total_presets": len(results),
+        "ok_presets": ok_count,
+        "results": results,
+        "summaries": [item["summary"] for item in results],
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Query configured football data sources for VeriBet.")
     parser.add_argument("--env-file", default=str(DEFAULT_ENV), help="Path to .env.data_sources")
@@ -638,6 +724,14 @@ def main() -> int:
     p_fetch_live.add_argument("--live-retries", type=int, default=2)
     p_fetch_live.add_argument("--live-retry-delay", type=float, default=2.0)
 
+    p_scan = sub.add_parser("scan-top-day", help="Run aggregate/export or live workflow across top competition presets")
+    p_scan.add_argument("--date", required=True)
+    p_scan.add_argument("--presets", help="Comma-separated preset names; default is all top presets")
+    p_scan.add_argument("--api-sports-season", help="API-SPORTS season, usually YYYY")
+    p_scan.add_argument("--run-live", action="store_true", help="Also run VeriBet live batch for each preset")
+    p_scan.add_argument("--export-base-dir", help="Base repo-relative directory for exported inputs")
+    p_scan.add_argument("--live-output-base-dir", help="Base repo-relative directory for live outputs when --run-live is used")
+
     args = parser.parse_args()
     load_env_file(Path(args.env_file))
 
@@ -679,6 +773,15 @@ def main() -> int:
             live_output_dir=args.live_output_dir,
             live_retries=args.live_retries,
             live_retry_delay=args.live_retry_delay,
+        )
+    elif args.command == "scan-top-day":
+        result = scan_top_day(
+            date=args.date,
+            presets=parse_presets_arg(args.presets),
+            api_sports_season=args.api_sports_season,
+            run_live=args.run_live,
+            export_base_dir=args.export_base_dir,
+            live_output_base_dir=args.live_output_base_dir,
         )
     else:
         raise SystemExit(f"unsupported command: {args.command}")
