@@ -719,16 +719,29 @@ cp .env.data_sources.example .env.data_sources
   --sport soccer_epl
 ```
 
+如果只想收紧到某个赛事，并直接导出成 `VeriBet` 输入文件：
+
+```bash
+.venv/bin/python scripts/veribet_data_sources.py aggregate-day \
+  --date 2026-04-29 \
+  --sport soccer_epl \
+  --competition "Premier League" \
+  --export-dir inputs_auto_2026-04-29
+```
+
 这个命令会返回：
 - `source_counts`
 - `merged_count`
 - `merged`
 - `veribet_candidates`
+- `exported_files`
 
 其中：
 - `merged` 是按 `home_team / away_team / date` 做的基础合并视图
 - 现在只保留目标日期的比赛
 - `veribet_candidates` 是可继续补 `snapshots` 的 VeriBet 输入骨架
+- `--competition` 会按赛事名做不区分大小写的包含过滤
+- `--export-dir` 会把 `veribet_candidates` 直接写成仓库内的 `*.json`
 
 如果你只是想先拿“当天比赛清单 + 基础骨架”，优先看：
 - `merged`

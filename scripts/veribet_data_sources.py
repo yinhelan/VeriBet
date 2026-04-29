@@ -7,6 +7,7 @@ import os
 import ssl
 import sys
 from datetime import datetime
+import re
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -171,11 +172,28 @@ def match_key(home: str, away: str, date: str) -> str:
     return f"{normalize_name(home)}__{normalize_name(away)}__{date}"
 
 
+def competition_text(item: dict[str, Any]) -> str:
+    football_data = (item.get("sources") or {}).get("football_data") or {}
+    api_sports = (item.get("sources") or {}).get("api_sports") or {}
+    odds_api = (item.get("sources") or {}).get("odds_api") or {}
+    return str(
+        football_data.get("competition")
+        or api_sports.get("league")
+        or odds_api.get("sport_title")
+        or ""
+    )
+
+
+def sanitize_filename(text: str) -> str:
+    compact = re.sub(r"[^a-z0-9]+", "_", normalize_name(text))
+    return compact.strip("_") or "match"
+
+
 def build_veribet_candidate(item: dict[str, Any]) -> dict[str, Any]:
     football_data = (item.get("sources") or {}).get("football_data") or {}
     api_sports = (item.get("sources") or {}).get("api_sports") or {}
     odds_api = (item.get("sources") or {}).get("odds_api") or {}
-    competition = football_data.get("competition") or api_sports.get("league") or odds_api.get("sport_title")
+    competition = competition_text(item)
     kickoff = football_data.get("kickoff") or api_sports.get("kickoff") or odds_api.get("kickoff")
     notes: dict[str, Any] = {"stage": "pre_match"}
     if football_data.get("matchday") is not None:
@@ -201,7 +219,25 @@ def build_veribet_candidate(item: dict[str, Any]) -> dict[str, Any]:
     return candidate
 
 
-def aggregate_day(date: str, sport: str = "soccer_epl") -> dict[str, Any]:
+def export_candidates(candidates: list[dict[str, Any]], export_dir: str) -> list[str]:
+    output_dir = ROOT_DIR / export_dir
+    output_dir.mkdir(parents=True, exist_ok=True)
+    written: list[str] = []
+    for candidate in candidates:
+        match_text = ((candidate.get("basic_info") or {}).get("match") or "match").replace(" vs ", "_vs_")
+        filename = sanitize_filename(match_text) + ".json"
+        target = output_dir / filename
+        target.write_text(json.dumps(candidate, ensure_ascii=False, indent=2), encoding="utf-8")
+        written.append(str(target.relative_to(ROOT_DIR)))
+    return written
+
+
+def aggregate_day(
+    date: str,
+    sport: str = "soccer_epl",
+    competition_filter: str | None = None,
+    export_dir: str | None = None,
+) -> dict[str, Any]:
     fd = football_data_matches(date, date, None)
     api = api_sports_fixtures(date, None, None, None)
     odds = odds_api_scores(sport, None)
@@ -282,11 +318,22 @@ def aggregate_day(date: str, sport: str = "soccer_epl") -> dict[str, Any]:
         }
 
     merged = sorted(aggregate.values(), key=lambda x: (x.get("date") or "", x.get("home_team") or "", x.get("away_team") or ""))
+    if competition_filter:
+        wanted = normalize_name(competition_filter)
+        merged = [
+            item for item in merged
+            if wanted in normalize_name(competition_text(item))
+        ]
     veribet_candidates = [build_veribet_candidate(item) for item in merged]
+    exported_files: list[str] = []
+    if export_dir:
+        exported_files = export_candidates(veribet_candidates, export_dir)
     return {
         "ok": True,
         "date": date,
         "sport": sport,
+        "competition_filter": competition_filter,
+        "export_dir": export_dir,
         "notes": [
             "aggregate-day 现在只保留目标日期的比赛。",
             "veribet_candidates 是可直接继续补充快照字段的 VeriBet 输入骨架。",
@@ -300,6 +347,7 @@ def aggregate_day(date: str, sport: str = "soccer_epl") -> dict[str, Any]:
         "merged": merged,
         "veribet_candidates_count": len(veribet_candidates),
         "veribet_candidates": veribet_candidates,
+        "exported_files": exported_files,
         "raw": {
             "football_data": fd,
             "api_sports": {
@@ -341,6 +389,8 @@ def main() -> int:
     p_agg = sub.add_parser("aggregate-day", help="Fetch one day from multiple sources and build a merged view")
     p_agg.add_argument("--date", required=True)
     p_agg.add_argument("--sport", default="soccer_epl")
+    p_agg.add_argument("--competition", help="Case-insensitive substring filter on competition/league name")
+    p_agg.add_argument("--export-dir", help="Write veribet_candidates into this repo-relative directory")
 
     args = parser.parse_args()
     load_env_file(Path(args.env_file))
@@ -356,7 +406,7 @@ def main() -> int:
     elif args.command == "odds-api-scores":
         result = odds_api_scores(args.sport, args.days_from)
     elif args.command == "aggregate-day":
-        result = aggregate_day(args.date, args.sport)
+        result = aggregate_day(args.date, args.sport, args.competition, args.export_dir)
     else:
         raise SystemExit(f"unsupported command: {args.command}")
 
