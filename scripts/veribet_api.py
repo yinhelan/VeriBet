@@ -132,6 +132,47 @@ def list_job_states(
     return states
 
 
+def summarize_job_state(state: dict[str, Any]) -> dict[str, Any]:
+    summary: dict[str, Any] = {}
+    result = state.get("result")
+    if not isinstance(result, dict):
+        return summary
+
+    review = result.get("review")
+    if isinstance(review, dict):
+        if review.get("match_id"):
+            summary["match_id"] = review.get("match_id")
+        result_label = review.get("result_label")
+        if isinstance(result_label, dict) and result_label.get("winner"):
+            summary["winner"] = result_label.get("winner")
+
+    patch_test = result.get("patch_test")
+    if isinstance(patch_test, dict):
+        delta = patch_test.get("delta")
+        if isinstance(delta, dict):
+            if delta.get("decision") is not None:
+                summary["decision"] = delta.get("decision")
+            summary["improved_cases"] = len(delta.get("improved_cases") or [])
+            summary["regressed_cases"] = len(delta.get("regressed_cases") or [])
+            if delta.get("patched_total_score") is not None:
+                summary["patched_total_score"] = delta.get("patched_total_score")
+            if delta.get("baseline_total_score") is not None:
+                summary["baseline_total_score"] = delta.get("baseline_total_score")
+
+    live_result = result.get("live_result")
+    if isinstance(live_result, dict):
+        inner = live_result.get("result")
+        if isinstance(inner, dict):
+            extracted = inner.get("extracted")
+            if isinstance(extracted, dict):
+                if extracted.get("risk_level") is not None:
+                    summary["risk_level"] = extracted.get("risk_level")
+                if extracted.get("structures") is not None:
+                    summary["structures"] = extracted.get("structures")
+
+    return summary
+
+
 def delete_job_state(job_id: str) -> bool:
     removed = False
     with JOB_STORE_LOCK:
@@ -824,7 +865,9 @@ class VeriBetAPIHandler(BaseHTTPRequestHandler):
         if state is None:
             self._send_json(HTTPStatus.NOT_FOUND, {"ok": False, "error": "not_found", "message": f"job not found: {job_id}"})
             return
-        self._send_json(HTTPStatus.OK, state)
+        enriched = dict(state)
+        enriched["summary"] = summarize_job_state(state)
+        self._send_json(HTTPStatus.OK, enriched)
 
     def handle_job_list(self, query: str) -> None:
         params = parse_qs(query, keep_blank_values=False)
@@ -847,15 +890,20 @@ class VeriBetAPIHandler(BaseHTTPRequestHandler):
             status_filter=status_filter,
             job_type_filter=job_type_filter,
         )
+        summarized_jobs = []
+        for job in jobs:
+            enriched = dict(job)
+            enriched["summary"] = summarize_job_state(job)
+            summarized_jobs.append(enriched)
         self._send_json(HTTPStatus.OK, {
             "ok": True,
-            "count": len(jobs),
+            "count": len(summarized_jobs),
             "filters": {
                 "limit": limit,
                 "status": sorted(status_filter) if status_filter else [],
                 "job_type": sorted(job_type_filter) if job_type_filter else [],
             },
-            "jobs": jobs,
+            "jobs": summarized_jobs,
         })
 
     def handle_job_delete(self, path: str) -> None:

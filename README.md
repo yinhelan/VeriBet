@@ -385,6 +385,15 @@ curl http://127.0.0.1:8012/api/jobs/<job_id>
 curl http://127.0.0.1:8012/api/jobs
 ```
 
+列表和单任务详情现在都会附带 `summary`，常见字段包括：
+- `match_id`
+- `winner`
+- `decision`
+- `improved_cases`
+- `regressed_cases`
+- `risk_level`
+- `structures`
+
 按条件过滤最近任务：
 
 ```bash
