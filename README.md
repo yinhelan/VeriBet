@@ -400,6 +400,12 @@ curl http://127.0.0.1:8012/api/jobs
 curl "http://127.0.0.1:8012/api/jobs?status=running&job_type=ingest_review_and_test&limit=10"
 ```
 
+如果你仍然想看完整列表项，可以显式打开：
+
+```bash
+curl "http://127.0.0.1:8012/api/jobs?verbose=1"
+```
+
 删除单个任务：
 
 ```bash

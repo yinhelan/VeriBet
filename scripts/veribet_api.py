@@ -173,6 +173,28 @@ def summarize_job_state(state: dict[str, Any]) -> dict[str, Any]:
     return summary
 
 
+def compact_job_state(state: dict[str, Any]) -> dict[str, Any]:
+    compact = {
+        "ok": state.get("ok", True),
+        "job_id": state.get("job_id"),
+        "job_type": state.get("job_type"),
+        "status": state.get("status"),
+        "stage": state.get("stage"),
+        "progress": state.get("progress"),
+        "message": state.get("message"),
+        "created_at": state.get("created_at"),
+        "updated_at": state.get("updated_at"),
+        "completed_at": state.get("completed_at"),
+        "summary": summarize_job_state(state),
+    }
+    error = state.get("error")
+    if isinstance(error, dict) and error.get("message"):
+        compact["error"] = {"message": error.get("message")}
+    elif error is not None:
+        compact["error"] = error
+    return compact
+
+
 def delete_job_state(job_id: str) -> bool:
     removed = False
     with JOB_STORE_LOCK:
@@ -874,6 +896,10 @@ class VeriBetAPIHandler(BaseHTTPRequestHandler):
         limit = 20
         if "limit" in params and params["limit"]:
             limit = max(1, int(params["limit"][-1]))
+        verbose = False
+        if "verbose" in params and params["verbose"]:
+            verbose_value = str(params["verbose"][-1]).strip().lower()
+            verbose = verbose_value in {"1", "true", "yes", "on"}
         status_filter = None
         if "status" in params:
             values = [item for raw in params["status"] for item in raw.split(",") if item]
@@ -890,16 +916,15 @@ class VeriBetAPIHandler(BaseHTTPRequestHandler):
             status_filter=status_filter,
             job_type_filter=job_type_filter,
         )
-        summarized_jobs = []
-        for job in jobs:
-            enriched = dict(job)
-            enriched["summary"] = summarize_job_state(job)
-            summarized_jobs.append(enriched)
+        summarized_jobs = [compact_job_state(job) for job in jobs] if not verbose else [
+            dict(job, summary=summarize_job_state(job)) for job in jobs
+        ]
         self._send_json(HTTPStatus.OK, {
             "ok": True,
             "count": len(summarized_jobs),
             "filters": {
                 "limit": limit,
+                "verbose": verbose,
                 "status": sorted(status_filter) if status_filter else [],
                 "job_type": sorted(job_type_filter) if job_type_filter else [],
             },
