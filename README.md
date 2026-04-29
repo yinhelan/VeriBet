@@ -289,6 +289,36 @@ curl -X POST http://127.0.0.1:8012/api/ingest-and-review \
 - 自动生成 review
 - 自动生成 candidate patch
 
+### 单接口串联到补丁验证
+
+如果你想一条请求直接跑到 `summary.json`：
+
+```bash
+curl -X POST http://127.0.0.1:8012/api/ingest-review-and-test \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "input_path": "inputs/example_match.json",
+    "ft_score": "2-2",
+    "ht_score": "0-0",
+    "tags": ["主热未封口", "平局低估"],
+    "judgement": "主热承接过重但封口不足，平局兑现。",
+    "rule_delta": "联赛主热2.20~2.35且平局被显著压冷时，提高平局防守权重。",
+    "analyst": "yinhelan",
+    "result_output_path": "live_outputs/api_ingest_test.result.json",
+    "review_output_path": "reviews/api_ingest_test.review.json",
+    "patch_output_path": "patches/api_ingest_test.candidate.json",
+    "patch_test_output_dir": "patch_test_runs/api_ingest_test",
+    "patch_test_retries": 1,
+    "retries": 0
+  }'
+```
+
+这个接口会：
+- 先分析
+- 再复盘
+- 再产 candidate patch
+- 最后直接跑 `patch_test`
+
 ## 复盘归因
 
 标准复盘模板：

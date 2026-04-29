@@ -332,6 +332,9 @@ class VeriBetAPIHandler(BaseHTTPRequestHandler):
             if parsed.path == "/api/ingest-and-review":
                 self.handle_ingest_and_review(body)
                 return
+            if parsed.path == "/api/ingest-review-and-test":
+                self.handle_ingest_review_and_test(body)
+                return
             self._send_json(HTTPStatus.NOT_FOUND, {"ok": False, "error": "not_found"})
         except ValueError as exc:
             self._send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "bad_request", "message": str(exc)})
@@ -576,6 +579,113 @@ class VeriBetAPIHandler(BaseHTTPRequestHandler):
             "live_result": live_result,
             "review": review,
             "candidate": candidate,
+        })
+
+    def handle_ingest_review_and_test(self, body: dict[str, Any]) -> None:
+        if isinstance(body.get("input"), dict):
+            match_input = body["input"]
+            input_file = body.get("match_input_file", "")
+        else:
+            input_path = body.get("input_path")
+            if not input_path:
+                raise ValueError("input or input_path is required")
+            path = resolve_repo_path(input_path)
+            match_input = load_json(path)
+            input_file = str(path)
+
+        bundle_path = resolve_repo_path(body.get("bundle_path", str(DEFAULT_BUNDLE.relative_to(ROOT_DIR))))
+        timeout = int(body.get("timeout", 180))
+        retries = int(body.get("retries", 2))
+        retry_delay = float(body.get("retry_delay", 1.5))
+
+        if isinstance(body.get("result"), dict):
+            live_result = body["result"]
+            result_file = body.get("result_file", "")
+        elif body.get("result_path"):
+            path = resolve_repo_path(body["result_path"])
+            live_result = load_json(path)
+            result_file = str(path)
+        else:
+            live_result = analyze_match(
+                match_input=match_input,
+                bundle_path=bundle_path,
+                timeout=timeout,
+                retries=retries,
+                retry_delay=retry_delay,
+            )
+            result_output_path = body.get("result_output_path")
+            if result_output_path:
+                out = resolve_repo_path(result_output_path, create_parent=True)
+                dump_json(out, live_result)
+                result_file = str(out)
+                live_result["saved_output"] = str(out)
+            else:
+                result_file = ""
+
+        ft_score = body.get("ft_score")
+        if not ft_score:
+            raise ValueError("ft_score is required")
+
+        review = build_review(
+            match_input=match_input,
+            match_input_file=input_file,
+            live_result=live_result,
+            result_file=result_file,
+            ft_score=ft_score,
+            ht_score=body.get("ht_score", ""),
+            result_label=body.get("result_label", ""),
+            tags=body.get("tags") or [],
+            judgement=body.get("judgement", ""),
+            rule_delta=body.get("rule_delta", ""),
+            analyst=body.get("analyst", ""),
+            source=body.get("source", "api_ingest_review_test"),
+        )
+
+        review_output_path = body.get("review_output_path")
+        if review_output_path:
+            out = resolve_repo_path(review_output_path, create_parent=True)
+            dump_json(out, review)
+            review["saved_output"] = str(out)
+
+        candidate = make_candidate(review)
+        patch_output_path = body.get("patch_output_path")
+        if patch_output_path:
+            out = resolve_repo_path(patch_output_path, create_parent=True)
+            dump_json(out, candidate)
+            candidate["saved_output"] = str(out)
+            patch_ref = str(out.relative_to(ROOT_DIR))
+        else:
+            temp_patch_dir = resolve_repo_path(
+                body.get("temp_patch_dir", f"patches/api_temp_{datetime.now().strftime('%Y%m%d_%H%M%S')}"),
+                create_parent=True,
+            )
+            out = temp_patch_dir / f"{review.get('match_id', 'candidate')}.candidate.json"
+            dump_json(out, candidate)
+            candidate["saved_output"] = str(out)
+            patch_ref = str(out.relative_to(ROOT_DIR))
+
+        patch_test_output_dir = body.get(
+            "patch_test_output_dir",
+            f"patch_test_runs/api_{review.get('match_id', 'candidate')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+        )
+        patch_test_args: list[str] = [
+            "--bundle", str(bundle_path.relative_to(ROOT_DIR)),
+        ]
+        if body.get("pack_path"):
+            patch_test_args.extend(["--pack", str(resolve_repo_path(body["pack_path"]).relative_to(ROOT_DIR))])
+        patch_test_args.extend([
+            "--patch", patch_ref,
+            "--output-dir", str(resolve_repo_path(patch_test_output_dir, create_parent=True).relative_to(ROOT_DIR)),
+            "--retries", str(int(body.get("patch_test_retries", 1))),
+        ])
+        patch_test_result = run_json_script("veribet_patch_test.py", patch_test_args)
+
+        self._send_json(HTTPStatus.OK, {
+            "ok": True,
+            "live_result": live_result,
+            "review": review,
+            "candidate": candidate,
+            "patch_test": patch_test_result,
         })
 
 
