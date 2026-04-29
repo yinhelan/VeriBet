@@ -711,6 +711,21 @@ cp .env.data_sources.example .env.data_sources
   --sport soccer_epl
 ```
 
+聚合某一天的 3 个数据源：
+
+```bash
+.venv/bin/python scripts/veribet_data_sources.py aggregate-day \
+  --date 2026-04-29 \
+  --sport soccer_epl
+```
+
+这个命令会返回：
+- `source_counts`
+- `merged_count`
+- `merged`
+
+其中 `merged` 是按 `home_team / away_team / date` 做的基础合并视图。
+
 快速例子：
 
 ```bash

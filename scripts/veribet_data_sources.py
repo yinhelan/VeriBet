@@ -4,11 +4,17 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import ssl
 import sys
 import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any
+
+try:
+    import certifi
+except Exception:
+    certifi = None
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_ENV = ROOT_DIR / ".env.data_sources"
@@ -30,7 +36,10 @@ def load_env_file(path: Path) -> None:
 
 def http_get_json(url: str, headers: dict[str, str], timeout: int = 30) -> dict[str, Any]:
     req = urllib.request.Request(url, headers=headers, method="GET")
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
+    context = None
+    if certifi is not None:
+      context = ssl.create_default_context(cafile=certifi.where())
+    with urllib.request.urlopen(req, timeout=timeout, context=context) as resp:
         body = resp.read().decode("utf-8", errors="replace")
     return json.loads(body)
 
@@ -102,7 +111,10 @@ def odds_api_scores(sport: str, days_from: int | None) -> dict[str, Any]:
     url = f"https://api.the-odds-api.com/v4/sports/{urllib.parse.quote(sport)}/scores"
     url += "?" + urllib.parse.urlencode(query)
     req = urllib.request.Request(url, headers={"Accept": "application/json"}, method="GET")
-    with urllib.request.urlopen(req, timeout=30) as resp:
+    context = None
+    if certifi is not None:
+      context = ssl.create_default_context(cafile=certifi.where())
+    with urllib.request.urlopen(req, timeout=30, context=context) as resp:
         body = resp.read().decode("utf-8", errors="replace")
         payload = json.loads(body)
         return {
@@ -120,6 +132,117 @@ def check_sources() -> dict[str, Any]:
         "scrapingbee_api_key": bool(os.getenv("SCRAPINGBEE_API_KEY")),
         "oddsp_api_key": bool(os.getenv("ODDSP_API_KEY")),
         "oddsp_account_id": bool(os.getenv("ODDSP_ACCOUNT_ID")),
+    }
+
+
+def safe_slug(text: str) -> str:
+    return "".join(ch.lower() if ch.isalnum() else "_" for ch in text).strip("_")
+
+
+def normalize_name(text: str) -> str:
+    return " ".join((text or "").lower().replace("&", " and ").split())
+
+
+def match_key(home: str, away: str, date: str) -> str:
+    return f"{normalize_name(home)}__{normalize_name(away)}__{date}"
+
+
+def aggregate_day(date: str, sport: str = "soccer_epl") -> dict[str, Any]:
+    fd = football_data_matches(date, date, None)
+    api = api_sports_fixtures(date, None, None, None)
+    odds = odds_api_scores(sport, None)
+
+    aggregate: dict[str, dict[str, Any]] = {}
+
+    for item in fd.get("matches", []):
+        home = ((item.get("homeTeam") or {}).get("name") or "").strip()
+        away = ((item.get("awayTeam") or {}).get("name") or "").strip()
+        kickoff = item.get("utcDate", "")
+        key = match_key(home, away, kickoff[:10] or date)
+        aggregate.setdefault(key, {
+            "match_key": key,
+            "date": kickoff[:10] or date,
+            "home_team": home,
+            "away_team": away,
+            "sources": {},
+        })
+        aggregate[key]["sources"]["football_data"] = {
+            "competition": (item.get("competition") or {}).get("name"),
+            "status": (item.get("status") or ""),
+            "kickoff": kickoff,
+            "score": item.get("score"),
+            "matchday": item.get("matchday"),
+        }
+
+    for item in api.get("response", []):
+        fixture = item.get("fixture") or {}
+        teams = item.get("teams") or {}
+        home = ((teams.get("home") or {}).get("name") or "").strip()
+        away = ((teams.get("away") or {}).get("name") or "").strip()
+        kickoff = fixture.get("date", "")
+        key = match_key(home, away, kickoff[:10] or date)
+        aggregate.setdefault(key, {
+            "match_key": key,
+            "date": kickoff[:10] or date,
+            "home_team": home,
+            "away_team": away,
+            "sources": {},
+        })
+        aggregate[key]["sources"]["api_sports"] = {
+            "league": ((item.get("league") or {}).get("name")),
+            "round": ((item.get("league") or {}).get("round")),
+            "status": ((fixture.get("status") or {}).get("short")),
+            "kickoff": kickoff,
+            "goals": item.get("goals"),
+            "score": item.get("score"),
+        }
+
+    for item in odds.get("data", []):
+        home = (item.get("home_team") or "").strip()
+        away = (item.get("away_team") or "").strip()
+        kickoff = item.get("commence_time", "")
+        key = match_key(home, away, kickoff[:10] or date)
+        aggregate.setdefault(key, {
+            "match_key": key,
+            "date": kickoff[:10] or date,
+            "home_team": home,
+            "away_team": away,
+            "sources": {},
+        })
+        aggregate[key]["sources"]["odds_api"] = {
+            "sport_key": item.get("sport_key"),
+            "sport_title": item.get("sport_title"),
+            "completed": item.get("completed"),
+            "kickoff": kickoff,
+            "scores": item.get("scores"),
+            "last_update": item.get("last_update"),
+        }
+
+    merged = sorted(aggregate.values(), key=lambda x: (x.get("date") or "", x.get("home_team") or "", x.get("away_team") or ""))
+    return {
+        "ok": True,
+        "date": date,
+        "sport": sport,
+        "source_counts": {
+            "football_data_matches": len(fd.get("matches", [])),
+            "api_sports_fixtures": len(api.get("response", [])),
+            "odds_api_scores": len(odds.get("data", [])),
+        },
+        "merged_count": len(merged),
+        "merged": merged,
+        "raw": {
+            "football_data": fd,
+            "api_sports": {
+                "get": api.get("get"),
+                "parameters": api.get("parameters"),
+                "results": api.get("results"),
+                "paging": api.get("paging"),
+            },
+            "odds_api": {
+                "x-requests-remaining": odds.get("x-requests-remaining"),
+                "x-requests-used": odds.get("x-requests-used"),
+            },
+        },
     }
 
 
@@ -145,6 +268,10 @@ def main() -> int:
     p_scores.add_argument("--sport", default="soccer_epl")
     p_scores.add_argument("--days-from", type=int)
 
+    p_agg = sub.add_parser("aggregate-day", help="Fetch one day from multiple sources and build a merged view")
+    p_agg.add_argument("--date", required=True)
+    p_agg.add_argument("--sport", default="soccer_epl")
+
     args = parser.parse_args()
     load_env_file(Path(args.env_file))
 
@@ -158,6 +285,8 @@ def main() -> int:
         result = api_sports_fixtures(args.date, args.league, args.season, args.team)
     elif args.command == "odds-api-scores":
         result = odds_api_scores(args.sport, args.days_from)
+    elif args.command == "aggregate-day":
+        result = aggregate_day(args.date, args.sport)
     else:
         raise SystemExit(f"unsupported command: {args.command}")
 
